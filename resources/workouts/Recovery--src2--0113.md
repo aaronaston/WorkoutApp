@@ -1,0 +1,22 @@
+---
+input files: ["Screenshot 2025-10-13 at 11.12.08 AM.jpeg.png"]
+processed: 2025-11-23T21:40:00Z
+---
+
+# Recovery
+
+## Push 1: 60-90s of each
+- Banded Dislocates — 1 x 60-90s
+- Standing Thoracic CARs — 1 x 60-90s
+- Segmented Cat-Cows — 1 x 60-90s
+- Kneeling Thoracic Reaches with Wall — 1 x 60-90s, per side
+- 90:90 with Lean Forward and Backward — 1 x 60-90s
+- Lat-Tricep Bench Stretch — 1 x 60-90s
+- Adductor Rocks — 1 x 60-90s, per side
+
+## Push: Foam Roll ~45-60s per side, per position
+- Foam Roll - Hamstrings
+- Foam Rolling - Quads
+- Foam Rolling - Lats
+- Thoracic Foam Rolling
+- Foam Roller Chest Opener
