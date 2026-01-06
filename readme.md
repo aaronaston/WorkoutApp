@@ -34,6 +34,20 @@ This is an iOS workout application whose primary job is to help the user discove
 
 ## Requirements
 
+## Tooling (Local)
+This repo includes a local pre-commit hook for Markdown linting, link checking, and spell checking. To enable it:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Install the required tools:
+
+```bash
+brew install lychee
+npm install -g markdownlint-cli cspell
+```
+
 ### 1) Workout Discovery (Primary Screen)
 **Goal:** Present good workout options for “today” based on history, context, preferences, and available sources.
 
@@ -76,7 +90,7 @@ This is an iOS workout application whose primary job is to help the user discove
   - select model/provider when multiple are supported (future)
   - store credentials securely (iOS Keychain)
 - If the LLM is not configured or network is unavailable, the app should degrade gracefully (e.g., prompt to configure, or offer non-LLM discovery paths).
- 
+
 **Privacy/permissions (discovery):**
 - Calendar integration is optional; the user can disable it at any time.
 - The user controls what data is shared with external LLMs, with category-level toggles (e.g., calendar context, history summaries, exercise logs, notes).

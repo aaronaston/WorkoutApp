@@ -6,7 +6,9 @@
     "WorkoutApp",
     "beads",
     "bd",
-    "Codex"
+    "Codex",
+    "EMOM",
+    "AMRAP"
   ],
   "ignorePaths": [
     ".beads",
