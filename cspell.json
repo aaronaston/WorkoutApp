@@ -1,0 +1,16 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "allowCompoundWords": true,
+  "words": [
+    "WorkoutApp",
+    "beads",
+    "bd",
+    "Codex"
+  ],
+  "ignorePaths": [
+    ".beads",
+    ".git",
+    "node_modules"
+  ]
+}

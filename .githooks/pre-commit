@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${SKIP_DOCS_HOOK:-}" = "1" ]; then
+  exit 0
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+  exit 0
+fi
+
+staged_files=$(git diff --cached --name-only --diff-filter=ACM)
+if [ -z "$staged_files" ]; then
+  exit 0
+fi
+
+md_files=()
+while IFS= read -r line; do
+  case "$line" in
+    *.md|*.MD|*.Md|*.mD)
+      md_files+=("$line")
+      ;;
+  esac
+done <<EOF
+$staged_files
+EOF
+
+if [ ${#md_files[@]} -eq 0 ]; then
+  exit 0
+fi
+
+missing=0
+if ! command -v markdownlint >/dev/null 2>&1; then
+  echo "Missing markdownlint. Install with: npm install -g markdownlint-cli" >&2
+  missing=1
+fi
+if ! command -v lychee >/dev/null 2>&1; then
+  echo "Missing lychee. Install with: brew install lychee" >&2
+  missing=1
+fi
+if ! command -v cspell >/dev/null 2>&1; then
+  echo "Missing cspell. Install with: npm install -g cspell" >&2
+  missing=1
+fi
+
+if [ $missing -ne 0 ]; then
+  exit 1
+fi
+
+echo "Running markdownlint..."
+markdownlint -c .markdownlint.json "${md_files[@]}"
+
+echo "Running lychee..."
+lychee --config lychee.toml "${md_files[@]}"
+
+echo "Running cspell..."
+cspell --no-progress --config cspell.json "${md_files[@]}"

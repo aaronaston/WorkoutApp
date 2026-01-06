@@ -1,0 +1,3 @@
+verbose = "warn"
+no_progress = true
+exclude_mail = true
