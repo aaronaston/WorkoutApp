@@ -1,3 +1,3 @@
 # Design Decision Records
 
-Place DDRs here. The DDR template will be added separately.
+Place DDRs here. Use `docs/decisions/ddr/template.md` as the starting point.

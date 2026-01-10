@@ -1,3 +1,3 @@
 # Architecture Decision Records
 
-Place ADRs here. The ADR template will be added separately.
+Place ADRs here. Use `docs/decisions/adr/template.md` as the starting point.
