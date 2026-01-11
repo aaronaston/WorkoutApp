@@ -45,6 +45,13 @@ This document uses TOGAF domains as the organizing structure and C4-style decomp
 - **External Source Importer:** fetch, parse, cache, provenance.
 - **LLM Orchestrator (optional):** prompt shaping, privacy gating, response normalization.
 
+### Presentation Layer (SwiftUI mock screens)
+- **Discovery:** search, "Today" highlight, recommended list, filter chips.
+- **Workout Detail:** metadata chips, recommendation reason, block preview, start action.
+- **Session:** timer card, current block list, log entries.
+- **History:** weekly summary stats and recent sessions list.
+- **Settings:** preference toggles and drill-in preferences.
+
 ### Code View (module-level sketch)
 - `Discovery` (recommendations, filters, explanations)
 - `Workouts` (models, knowledge base loader, templates/variants)
@@ -58,6 +65,32 @@ This document uses TOGAF domains as the organizing structure and C4-style decomp
 ### Information Context
 - Core information is stored locally and tied to a single user on-device.
 - Data provenance distinguishes knowledge base, user templates, and derived variants.
+
+### View Model Data Shapes (derived from UI mockups)
+- **DiscoveryViewModel**
+  - `title`, `subtitle`
+  - `searchPlaceholder`, `searchQuery`
+  - `todayHighlight: WorkoutHighlight`
+  - `recommended: [WorkoutSummary]`
+  - `filters: [FilterChip]`
+- **WorkoutDetailViewModel**
+  - `workout: WorkoutSummary`
+  - `tags: [String]` (duration, focus, equipment)
+  - `recommendationReason: RecommendationReason`
+  - `previewBlocks: [WorkoutBlockPreview]`
+  - `primaryActionTitle` (start session)
+- **SessionViewModel**
+  - `sessionTitle`, `workoutTitle`
+  - `timer: TimerState` (mode, remaining, round, phase)
+  - `currentBlocks: [WorkoutBlockSummary]`
+  - `logEntries: [LogEntrySummary]`
+- **HistoryViewModel**
+  - `weeklySummary: HistorySummary`
+  - `recentSessions: [SessionSummary]`
+- **SettingsViewModel**
+  - `calendarSyncEnabled`, `healthSyncEnabled`
+  - `discoveryPreferences: [PreferenceLink]`
+  - `accountActions: [ActionLink]`
 
 ### Conceptual Data Model (high level)
 - **WorkoutDefinition**
@@ -85,6 +118,11 @@ This document uses TOGAF domains as the organizing structure and C4-style decomp
 - Session logs -> history -> recommendation engine inputs.
 - Preferences -> discovery ranking and filtering.
 - Optional external sources/LLM -> discovery -> template/variant creation.
+
+### Storage Boundaries
+- **Persisted:** workout definitions (base + templates/variants), sessions, preferences, recommendation inputs, external imports.
+- **Computed:** recommendation ranking, reasons, filter chips, weekly summaries.
+- **Ephemeral UI state:** search query, selected filters, active timer state, in-progress logs.
 
 ## Technology Architecture
 
