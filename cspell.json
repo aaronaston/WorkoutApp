@@ -9,7 +9,8 @@
     "Codex",
     "EMOM",
     "AMRAP",
-    "TOGAF"
+    "TOGAF",
+    "xcodeproj"
   ],
   "ignorePaths": [
     ".beads",
