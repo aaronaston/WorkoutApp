@@ -9,12 +9,15 @@
 /* Begin PBXBuildFile section */
 		100000000000000000000120 /* WorkoutAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000110 /* WorkoutAppApp.swift */; };
 		100000000000000000000121 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000111 /* ContentView.swift */; };
+		100000000000000000000160 /* CoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000150 /* CoreModels.swift */; };
+		100000000000000000000170 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000171 /* MarkdownUI */; };
 		100000000000000000000122 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000112 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		100000000000000000000110 /* WorkoutAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutAppApp.swift; sourceTree = "<group>"; };
 		100000000000000000000111 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		100000000000000000000150 /* CoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreModels.swift; sourceTree = "<group>"; };
 		100000000000000000000112 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		100000000000000000000113 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		100000000000000000000114 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -26,6 +29,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				100000000000000000000170 /* MarkdownUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -53,6 +57,7 @@
 			children = (
 				100000000000000000000110 /* WorkoutAppApp.swift */,
 				100000000000000000000111 /* ContentView.swift */,
+				100000000000000000000150 /* CoreModels.swift */,
 				100000000000000000000112 /* Assets.xcassets */,
 				100000000000000000000105 /* Preview Content */,
 				100000000000000000000114 /* Info.plist */,
@@ -84,6 +89,9 @@
 			dependencies = (
 			);
 			name = WorkoutApp;
+			packageProductDependencies = (
+				100000000000000000000171 /* MarkdownUI */,
+			);
 			productName = WorkoutApp;
 			productReference = 100000000000000000000115 /* WorkoutApp.app */;
 			productType = "com.apple.product-type.application";
@@ -112,6 +120,9 @@
 				Base,
 			);
 			mainGroup = 100000000000000000000102;
+			packageReferences = (
+				100000000000000000000172 /* MarkdownUI */,
+			);
 			productRefGroup = 100000000000000000000103 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -139,10 +150,30 @@
 			files = (
 				100000000000000000000120 /* WorkoutAppApp.swift in Sources */,
 				100000000000000000000121 /* ContentView.swift in Sources */,
+				100000000000000000000160 /* CoreModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		100000000000000000000172 /* MarkdownUI */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/MarkdownUI";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		100000000000000000000171 /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 100000000000000000000172 /* MarkdownUI */;
+			productName = MarkdownUI;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		100000000000000000000150 /* Debug */ = {

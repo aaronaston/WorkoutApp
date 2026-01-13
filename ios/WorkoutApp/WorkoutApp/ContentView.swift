@@ -1,3 +1,4 @@
+import MarkdownUI
 import SwiftUI
 
 struct ContentView: View {
@@ -119,6 +120,20 @@ struct WorkoutDetailMockView: View {
                     subtitle: "Matches your preferred duration and focus",
                     detail: "Last session: Pull-focused - Balance with push"
                 )
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Overview")
+                        .font(.headline)
+
+                    Markdown(workout.markdown)
+                        .markdownTextStyle(\.text) {
+                            FontSize(.em(0.95))
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(12)
+                }
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Preview")
@@ -384,6 +399,7 @@ struct MockWorkout: Identifiable {
     let duration: String
     let focus: String
     let equipment: String
+    let markdown: String
 
     static let sample: [MockWorkout] = [
         MockWorkout(
@@ -391,21 +407,42 @@ struct MockWorkout: Identifiable {
             subtitle: "Strength focus",
             duration: "40 min",
             focus: "Lower body",
-            equipment: "Barbell"
+            equipment: "Barbell",
+            markdown: """
+            **Intent:** Lower-body strength with a pull accessory.
+
+            - Warm-up: 5 min mobility
+            - Main set: 4 rounds
+            - Finisher: 6 min carry
+            """
         ),
         MockWorkout(
             title: "Mobility Reset",
             subtitle: "Recovery and range",
             duration: "20 min",
             focus: "Mobility",
-            equipment: "Bodyweight"
+            equipment: "Bodyweight",
+            markdown: """
+            **Intent:** Restore range of motion and ease soreness.
+
+            - Flow: 10 min hips + shoulders
+            - Breath: 5 min box breathing
+            - Reset: 5 min easy walk
+            """
         ),
         MockWorkout(
             title: "Single Leg Push",
             subtitle: "Balance and control",
             duration: "30 min",
             focus: "Unilateral",
-            equipment: "Dumbbells"
+            equipment: "Dumbbells",
+            markdown: """
+            **Intent:** Build unilateral strength and stability.
+
+            - Prep: 5 min activation
+            - Main set: 3 rounds
+            - Cooldown: 5 min stretch
+            """
         )
     ]
 }
