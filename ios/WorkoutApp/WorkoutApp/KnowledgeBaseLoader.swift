@@ -104,6 +104,16 @@ struct WorkoutMarkdownParser {
         var currentDetail: String?
         var currentItems: [WorkoutItem] = []
 
+        func listItemText(_ listItem: ListItem) -> String? {
+            for child in listItem.children {
+                if let paragraph = child as? Paragraph {
+                    let text = paragraph.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return text.isEmpty ? nil : text
+                }
+            }
+            return nil
+        }
+
         func flushSection() {
             guard let title = currentTitle else {
                 return
@@ -141,10 +151,9 @@ struct WorkoutMarkdownParser {
                 continue
             }
 
-            if let list = child as? List {
-                for listItem in list.children.compactMap({ $0 as? ListItem }) {
-                    let text = listItem.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !text.isEmpty else {
+            if let list = child as? ListItemContainer {
+                for listItem in list.listItems {
+                    guard let text = listItemText(listItem) else {
                         continue
                     }
 

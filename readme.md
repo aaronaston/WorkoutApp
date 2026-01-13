@@ -48,6 +48,19 @@ brew install lychee
 npm install -g markdownlint-cli cspell
 ```
 
+## Run in Simulator (CLI)
+Use a generic iPhone simulator (first available iPhone), build, install, and launch:
+
+```bash
+UDID=$(xcrun simctl list devices available | rg -m1 "iPhone" | sed -E 's/.*\\(([0-9A-F-]+)\\).*/\\1/')
+xcrun simctl boot "$UDID" || true
+open -a Simulator
+
+xcodebuild -project ios/WorkoutApp/WorkoutApp.xcodeproj -scheme WorkoutApp -sdk iphonesimulator -configuration Debug -derivedDataPath /tmp/WorkoutAppDerived
+xcrun simctl install "$UDID" /tmp/WorkoutAppDerived/Build/Products/Debug-iphonesimulator/WorkoutApp.app
+xcrun simctl launch "$UDID" com.example.WorkoutApp
+```
+
 ### 1) Workout Discovery (Primary Screen)
 **Goal:** Present good workout options for “today” based on history, context, preferences, and available sources.
 

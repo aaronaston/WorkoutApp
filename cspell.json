@@ -10,7 +10,10 @@
     "EMOM",
     "AMRAP",
     "TOGAF",
-    "xcodeproj"
+    "xcodeproj",
+    "UDID",
+    "xcrun",
+    "simctl"
   ],
   "ignorePaths": [
     ".beads",
