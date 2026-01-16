@@ -39,6 +39,10 @@ struct DiscoveryView: View {
     @State private var workouts: [WorkoutDefinition] = []
     @State private var loadError: String?
     @State private var hasLoaded = false
+    @State private var searchQuery = ""
+    @State private var searchResults: [WorkoutSearchResult] = []
+    @State private var searchIndex: WorkoutSearchIndex?
+    @State private var searchTask: Task<Void, Never>?
 
     private var highlightedWorkout: WorkoutDefinition? {
         workouts.first
@@ -56,7 +60,7 @@ struct DiscoveryView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                SearchFieldMock(placeholder: "Search workouts, equipment, or goals")
+                SearchField(text: $searchQuery, placeholder: "Search workouts, equipment, or goals")
 
                 if let loadError {
                     VStack(alignment: .leading, spacing: 6) {
@@ -69,17 +73,41 @@ struct DiscoveryView: View {
                 } else if workouts.isEmpty {
                     ProgressView("Loading workouts...")
                         .frame(maxWidth: .infinity, alignment: .center)
+                } else if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Results")
+                            .font(.headline)
+
+                        if searchResults.isEmpty {
+                            Text("No workouts match that search.")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(searchResults) { result in
+                                NavigationLink {
+                                    WorkoutDetailView(workout: result.workout)
+                                } label: {
+                                    WorkoutRow(workout: result.workout)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
                 } else {
                     if let highlightedWorkout {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Today")
                                 .font(.headline)
 
-                            HighlightCard(
-                                title: highlightedWorkout.title,
-                                subtitle: sectionSummary(for: highlightedWorkout),
-                                detail: "Loaded from the knowledge base"
-                            )
+                            NavigationLink {
+                                WorkoutDetailView(workout: highlightedWorkout)
+                            } label: {
+                                HighlightCard(
+                                    title: highlightedWorkout.title,
+                                    subtitle: sectionSummary(for: highlightedWorkout),
+                                    detail: "Loaded from the knowledge base"
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
 
@@ -115,6 +143,9 @@ struct DiscoveryView: View {
         .task {
             loadWorkoutsIfNeeded()
         }
+        .onChange(of: searchQuery) { _, _ in
+            scheduleSearch()
+        }
     }
 
     private func sectionSummary(for workout: WorkoutDefinition) -> String {
@@ -133,9 +164,32 @@ struct DiscoveryView: View {
         hasLoaded = true
         do {
             workouts = try KnowledgeBaseLoader().loadWorkouts()
+            searchIndex = WorkoutSearchIndex(workouts: workouts)
+            updateSearchResults()
         } catch {
             loadError = error.localizedDescription
         }
+    }
+
+    private func scheduleSearch() {
+        searchTask?.cancel()
+        searchTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+            updateSearchResults()
+        }
+    }
+
+    @MainActor
+    private func updateSearchResults() {
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let searchIndex else {
+            searchResults = []
+            return
+        }
+        searchResults = searchIndex.search(query: trimmed, limit: 25)
     }
 }
 
@@ -332,15 +386,26 @@ struct SettingsMockView: View {
     }
 }
 
-struct SearchFieldMock: View {
+struct SearchField: View {
+    @Binding var text: String
     let placeholder: String
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            Text(placeholder)
-                .foregroundStyle(.secondary)
+            TextField(placeholder, text: $text)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
             Spacer()
         }
         .padding()
