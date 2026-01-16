@@ -1,2 +1,5 @@
 ios/WorkoutApp/build/
-ios/WorkoutApp/WorkoutApp.xcodeproj/project.xcworkspace/xcshareddata/
+ios/WorkoutApp/WorkoutApp.xcodeproj/project.xcworkspace/xcshareddata/*
+!ios/WorkoutApp/WorkoutApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+ios/WorkoutApp/WorkoutApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/*
+!ios/WorkoutApp/WorkoutApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
