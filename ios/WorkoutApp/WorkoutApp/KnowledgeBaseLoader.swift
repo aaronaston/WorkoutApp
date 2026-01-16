@@ -257,6 +257,9 @@ struct WorkoutSearchIndex {
         let hasSemantic = !queryEmbedding.isEmpty
 
         let results = entries.compactMap { entry -> WorkoutSearchResult? in
+            guard Self.matchesAllTokens(queryTokens, in: entry.keywords) else {
+                return nil
+            }
             let keywordScore = Self.keywordScore(
                 queryTokens: queryTokens,
                 keywords: entry.keywords,
@@ -340,6 +343,13 @@ struct WorkoutSearchIndex {
         }
 
         return min(score, 1.0)
+    }
+
+    private static func matchesAllTokens(_ queryTokens: [String], in keywords: Set<String>) -> Bool {
+        guard !queryTokens.isEmpty else {
+            return true
+        }
+        return queryTokens.allSatisfy { keywords.contains($0) }
     }
 
     private static func combinedScore(keyword: Double, semantic: Double) -> Double {
