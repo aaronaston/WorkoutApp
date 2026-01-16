@@ -5,7 +5,7 @@ struct ContentView: View {
     var body: some View {
         TabView {
             NavigationStack {
-                DiscoveryMockView()
+                DiscoveryView()
             }
             .tabItem {
                 Label("Discover", systemImage: "sparkles")
@@ -35,8 +35,14 @@ struct ContentView: View {
     }
 }
 
-struct DiscoveryMockView: View {
-    private let workouts = MockWorkout.sample
+struct DiscoveryView: View {
+    @State private var workouts: [WorkoutDefinition] = []
+    @State private var loadError: String?
+    @State private var hasLoaded = false
+
+    private var highlightedWorkout: WorkoutDefinition? {
+        workouts.first
+    }
 
     var body: some View {
         ScrollView {
@@ -52,28 +58,43 @@ struct DiscoveryMockView: View {
 
                 SearchFieldMock(placeholder: "Search workouts, equipment, or goals")
 
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Today")
-                        .font(.headline)
+                if let loadError {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Unable to load workouts")
+                            .font(.headline)
+                        Text(loadError)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else if workouts.isEmpty {
+                    ProgressView("Loading workouts...")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                } else {
+                    if let highlightedWorkout {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Today")
+                                .font(.headline)
 
-                    HighlightCard(
-                        title: "Strength Hinge + Push",
-                        subtitle: "35 min - Minimal equipment",
-                        detail: "Based on recent sessions and time available"
-                    )
-                }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Recommended")
-                        .font(.headline)
-
-                    ForEach(workouts) { workout in
-                        NavigationLink {
-                            WorkoutDetailMockView(workout: workout)
-                        } label: {
-                            WorkoutRowMock(workout: workout)
+                            HighlightCard(
+                                title: highlightedWorkout.title,
+                                subtitle: sectionSummary(for: highlightedWorkout),
+                                detail: "Loaded from the knowledge base"
+                            )
                         }
-                        .buttonStyle(.plain)
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Recommended")
+                            .font(.headline)
+
+                        ForEach(workouts) { workout in
+                            NavigationLink {
+                                WorkoutDetailView(workout: workout)
+                            } label: {
+                                WorkoutRow(workout: workout)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
 
@@ -91,11 +112,47 @@ struct DiscoveryMockView: View {
             .padding()
         }
         .navigationTitle("Discover")
+        .task {
+            loadWorkoutsIfNeeded()
+        }
+    }
+
+    private func sectionSummary(for workout: WorkoutDefinition) -> String {
+        let titles = workout.content.parsedSections?.prefix(3).map { $0.title } ?? []
+        if titles.isEmpty {
+            return "Knowledge base workout"
+        }
+        return titles.joined(separator: " / ")
+    }
+
+    private func loadWorkoutsIfNeeded() {
+        guard !hasLoaded else {
+            return
+        }
+
+        hasLoaded = true
+        do {
+            workouts = try KnowledgeBaseLoader().loadWorkouts()
+        } catch {
+            loadError = error.localizedDescription
+        }
     }
 }
 
-struct WorkoutDetailMockView: View {
-    let workout: MockWorkout
+struct WorkoutDetailView: View {
+    let workout: WorkoutDefinition
+
+    private var sectionCount: Int {
+        workout.content.parsedSections?.count ?? 0
+    }
+
+    private var sectionTitles: [String] {
+        workout.content.parsedSections?.prefix(3).map { $0.title } ?? []
+    }
+
+    private var overviewMarkdown: String {
+        WorkoutMarkdownParser().strippedMarkdown(from: workout.content.sourceMarkdown)
+    }
 
     var body: some View {
         ScrollView {
@@ -105,27 +162,26 @@ struct WorkoutDetailMockView: View {
                         .font(.title2)
                         .fontWeight(.semibold)
 
-                    Text(workout.subtitle)
+                    Text(sectionTitles.isEmpty ? "Knowledge base workout" : sectionTitles.joined(separator: " / "))
                         .foregroundStyle(.secondary)
                 }
 
                 HStack(spacing: 8) {
-                    MockChip(title: workout.duration)
-                    MockChip(title: workout.focus)
-                    MockChip(title: workout.equipment)
+                    MockChip(title: "\(sectionCount) sections")
+                    MockChip(title: sourceLabel(for: workout.source))
                 }
 
                 HighlightCard(
                     title: "Why this workout?",
-                    subtitle: "Matches your preferred duration and focus",
-                    detail: "Last session: Pull-focused - Balance with push"
+                    subtitle: "Structured from the knowledge base",
+                    detail: "Sections parsed from the original Markdown"
                 )
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Overview")
                         .font(.headline)
 
-                    Markdown(workout.markdown)
+                    Markdown(overviewMarkdown)
                         .markdownTextStyle(\.text) {
                             FontSize(.em(0.95))
                         }
@@ -136,12 +192,17 @@ struct WorkoutDetailMockView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Preview")
+                    Text("Sections")
                         .font(.headline)
 
-                    WorkoutBlockMock(title: "Warm-up", detail: "5 min mobility")
-                    WorkoutBlockMock(title: "Main Set", detail: "4 rounds - hinge/push")
-                    WorkoutBlockMock(title: "Finisher", detail: "Core and carry")
+                    if let sections = workout.content.parsedSections, !sections.isEmpty {
+                        ForEach(sections) { section in
+                            WorkoutSectionCard(section: section)
+                        }
+                    } else {
+                        Text("No structured sections parsed yet.")
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Button(action: {}) {
@@ -156,6 +217,21 @@ struct WorkoutDetailMockView: View {
             .padding()
         }
         .navigationTitle("Workout")
+    }
+
+    private func sourceLabel(for source: WorkoutSource) -> String {
+        switch source {
+        case .knowledgeBase:
+            return "Knowledge base"
+        case .template:
+            return "Template"
+        case .variant:
+            return "Variant"
+        case .external:
+            return "External"
+        case .generated:
+            return "Generated"
+        }
     }
 }
 
@@ -273,8 +349,23 @@ struct SearchFieldMock: View {
     }
 }
 
-struct WorkoutRowMock: View {
-    let workout: MockWorkout
+struct WorkoutRow: View {
+    let workout: WorkoutDefinition
+
+    private var sectionTitles: [String] {
+        workout.content.parsedSections?.prefix(2).map { $0.title } ?? []
+    }
+
+    private var sectionSummary: String {
+        if sectionTitles.isEmpty {
+            return "Knowledge base workout"
+        }
+        return sectionTitles.joined(separator: " / ")
+    }
+
+    private var sectionCount: Int {
+        workout.content.parsedSections?.count ?? 0
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -282,17 +373,64 @@ struct WorkoutRowMock: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.primary)
 
-            Text(workout.subtitle)
+            Text(sectionSummary)
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 8) {
-                MockChip(title: workout.duration)
-                MockChip(title: workout.focus)
+                MockChip(title: "\(sectionCount) sections")
+                MockChip(title: "Knowledge base")
             }
         }
         .padding()
         .background(Color(.secondarySystemBackground))
         .cornerRadius(12)
+    }
+}
+
+struct WorkoutSectionCard: View {
+    let section: WorkoutSection
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(section.title)
+                .fontWeight(.semibold)
+
+            if let detail = section.detail, !detail.isEmpty {
+                Text(detail)
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(section.items) { item in
+                WorkoutSectionItemRow(item: item)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(12)
+    }
+}
+
+struct WorkoutSectionItemRow: View {
+    let item: WorkoutItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("-")
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name)
+                    .fontWeight(.semibold)
+
+                if let prescription = item.prescription, !prescription.isEmpty {
+                    Text(prescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+        }
     }
 }
 
@@ -390,61 +528,6 @@ struct LogRowMock: View {
         .background(Color(.secondarySystemBackground))
         .cornerRadius(12)
     }
-}
-
-struct MockWorkout: Identifiable {
-    let id = UUID()
-    let title: String
-    let subtitle: String
-    let duration: String
-    let focus: String
-    let equipment: String
-    let markdown: String
-
-    static let sample: [MockWorkout] = [
-        MockWorkout(
-            title: "Squat + Pull",
-            subtitle: "Strength focus",
-            duration: "40 min",
-            focus: "Lower body",
-            equipment: "Barbell",
-            markdown: """
-            **Intent:** Lower-body strength with a pull accessory.
-
-            - Warm-up: 5 min mobility
-            - Main set: 4 rounds
-            - Finisher: 6 min carry
-            """
-        ),
-        MockWorkout(
-            title: "Mobility Reset",
-            subtitle: "Recovery and range",
-            duration: "20 min",
-            focus: "Mobility",
-            equipment: "Bodyweight",
-            markdown: """
-            **Intent:** Restore range of motion and ease soreness.
-
-            - Flow: 10 min hips + shoulders
-            - Breath: 5 min box breathing
-            - Reset: 5 min easy walk
-            """
-        ),
-        MockWorkout(
-            title: "Single Leg Push",
-            subtitle: "Balance and control",
-            duration: "30 min",
-            focus: "Unilateral",
-            equipment: "Dumbbells",
-            markdown: """
-            **Intent:** Build unilateral strength and stability.
-
-            - Prep: 5 min activation
-            - Main set: 3 rounds
-            - Cooldown: 5 min stretch
-            """
-        )
-    ]
 }
 
 struct MockSession: Identifiable {

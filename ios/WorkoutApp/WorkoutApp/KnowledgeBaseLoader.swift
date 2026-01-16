@@ -38,7 +38,7 @@ struct KnowledgeBaseLoader {
 
 struct WorkoutMarkdownParser {
     func parse(markdown: String, id: WorkoutID, sourceURL: URL?, versionHash: String?) -> WorkoutDefinition {
-        let strippedMarkdown = stripFrontMatter(from: markdown)
+        let strippedMarkdown = strippedMarkdown(from: markdown)
         let document = Document(parsing: strippedMarkdown)
         let title = extractTitle(from: document) ?? titleFromID(id)
         let sections = parseSections(from: document)
@@ -69,7 +69,7 @@ struct WorkoutMarkdownParser {
         )
     }
 
-    private func stripFrontMatter(from markdown: String) -> String {
+    func strippedMarkdown(from markdown: String) -> String {
         let lines = markdown.components(separatedBy: "\n")
         guard lines.first == "---" else {
             return markdown
