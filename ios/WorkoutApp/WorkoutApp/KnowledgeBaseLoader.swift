@@ -253,6 +253,9 @@ struct WorkoutSearchIndex {
         }
 
         let queryTokens = tokenizer.tokens(from: trimmed)
+        guard !queryTokens.isEmpty else {
+            return []
+        }
         let queryEmbedding = Self.normalized(embedder.embed(trimmed))
         let hasSemantic = !queryEmbedding.isEmpty
 
@@ -347,7 +350,7 @@ struct WorkoutSearchIndex {
 
     private static func matchesAllTokens(_ queryTokens: [String], in keywords: Set<String>) -> Bool {
         guard !queryTokens.isEmpty else {
-            return true
+            return false
         }
         return queryTokens.allSatisfy { keywords.contains($0) }
     }
@@ -457,17 +460,20 @@ struct HashedEmbedder: WorkoutEmbedder {
 struct WorkoutSearchTokenizer {
     func tokens(from text: String) -> [String] {
         let normalized = text.lowercased()
-        let tokenizer = NLTokenizer(unit: .word)
-        tokenizer.string = normalized
-
+        let pattern = "[a-z0-9]+(?:/[a-z0-9]+)*"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return []
+        }
+        let range = NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
         var tokens: [String] = []
-        tokenizer.enumerateTokens(in: normalized.startIndex..<normalized.endIndex) { range, _ in
-            let rawToken = String(normalized[range])
-            let token = rawToken.trimmingCharacters(in: .punctuationCharacters)
+        regex.enumerateMatches(in: normalized, options: [], range: range) { match, _, _ in
+            guard let match, let matchRange = Range(match.range, in: normalized) else {
+                return
+            }
+            let token = String(normalized[matchRange])
             if token.count > 1 {
                 tokens.append(token)
             }
-            return true
         }
         return tokens
     }
