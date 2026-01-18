@@ -13,6 +13,49 @@ Run `bd prime` for workflow context, or install hooks (`bd hooks install`) for a
 
 For full workflow details: `bd prime`
 
+## Multi-Agent Workflow (Git Worktrees + Merge Slots)
+
+**Goal:** isolate code changes per agent while sharing the same Beads database.
+
+**Rules:**
+- Do not work in the main worktree except for integration tasks.
+- Each agent uses their own git worktree directory.
+- Use `bd merge-slot` to serialize landing to `main`.
+
+**One-time setup (run from repo root):**
+
+```bash
+git worktree add .worktrees/agent-a
+git worktree add .worktrees/agent-b
+```
+
+**Agent bootstrap (recommended):**
+
+```bash
+scripts/agent-bootstrap.sh agent-a bd-1234
+```
+
+**Per-agent daily flow:**
+
+```bash
+cd .worktrees/agent-a
+source .bd-env           # sets BD_ACTOR=agent-a (or export BD_ACTOR=agent-a)
+bd ready
+bd slot claim agent-a   # optional: mark active agent
+git checkout -b agent-a/<issue>
+# work, commit locally
+```
+
+**Landing (serialized):**
+
+```bash
+bd merge-slot claim
+git pull --rebase
+bd sync
+git push
+bd merge-slot release
+```
+
 ## Codex Sandbox Note
 
 Beads may fail to start or lock under Codex sandboxing. Launch Codex with:
