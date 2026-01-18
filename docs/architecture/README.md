@@ -37,7 +37,7 @@ This document uses TOGAF domains as the organizing structure and C4-style decomp
 
 ### Component View (inside the app)
 - **Discovery & Recommendations:** ranking engine, explainable reasons, preference weighting.
-- **Search & Browse:** filters, tags, and direct selection.
+- **Search & Browse:** filters, tags, and direct selection; search results are ordered alphabetically by workout title.
 - **Knowledge Base Loader:** Markdown reader, metadata extractor, indexer.
 - **Template/Variant Manager:** copy/derive, edit, provenance tracking.
 - **Execution Engine:** timer modes (EMOM/interval/AMRAP/stopwatch), cues, session recovery.

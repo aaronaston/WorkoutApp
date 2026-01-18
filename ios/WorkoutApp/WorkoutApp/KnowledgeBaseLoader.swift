@@ -284,7 +284,13 @@ struct WorkoutSearchIndex {
         }
 
         return results
-            .sorted { $0.score > $1.score }
+            .sorted { lhs, rhs in
+                let titleOrder = lhs.workout.title.localizedCaseInsensitiveCompare(rhs.workout.title)
+                if titleOrder == .orderedSame {
+                    return lhs.score > rhs.score
+                }
+                return titleOrder == .orderedAscending
+            }
             .prefix(limit)
             .map { $0 }
     }
@@ -302,7 +308,6 @@ struct WorkoutSearchIndex {
 
         if let sections = workout.content.parsedSections {
             for section in sections {
-                components.append(section.title)
                 if let detail = section.detail {
                     components.append(detail)
                 }
