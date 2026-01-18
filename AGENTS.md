@@ -56,6 +56,14 @@ git push
 bd merge-slot release
 ```
 
+**Cleanup when done (optional but recommended):**
+
+```bash
+git worktree remove .worktrees/agent-a
+git branch -d agent-a/<issue>
+git worktree prune
+```
+
 ## Codex Sandbox Note
 
 Beads may fail to start or lock under Codex sandboxing. Launch Codex with:
