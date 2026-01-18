@@ -10,6 +10,7 @@
 		100000000000000000000120 /* WorkoutAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000110 /* WorkoutAppApp.swift */; };
 		100000000000000000000121 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000111 /* ContentView.swift */; };
 		100000000000000000000160 /* CoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000150 /* CoreModels.swift */; };
+		100000000000000000000251 /* UserPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000250 /* UserPreferences.swift */; };
 		100000000000000000000221 /* WorkoutSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000220 /* WorkoutSessionStore.swift */; };
 		100000000000000000000181 /* KnowledgeBaseLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000180 /* KnowledgeBaseLoader.swift */; };
 		100000000000000000000170 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000171 /* MarkdownUI */; };
@@ -34,6 +35,7 @@
 		100000000000000000000110 /* WorkoutAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutAppApp.swift; sourceTree = "<group>"; };
 		100000000000000000000111 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		100000000000000000000150 /* CoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreModels.swift; sourceTree = "<group>"; };
+		100000000000000000000250 /* UserPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserPreferences.swift; sourceTree = "<group>"; };
 		100000000000000000000220 /* WorkoutSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSessionStore.swift; sourceTree = "<group>"; };
 		100000000000000000000180 /* KnowledgeBaseLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeBaseLoader.swift; sourceTree = "<group>"; };
 		100000000000000000000112 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -92,6 +94,7 @@
 				100000000000000000000110 /* WorkoutAppApp.swift */,
 				100000000000000000000111 /* ContentView.swift */,
 				100000000000000000000150 /* CoreModels.swift */,
+				100000000000000000000250 /* UserPreferences.swift */,
 				100000000000000000000220 /* WorkoutSessionStore.swift */,
 				100000000000000000000180 /* KnowledgeBaseLoader.swift */,
 				100000000000000000000112 /* Assets.xcassets */,
@@ -237,6 +240,7 @@
 				100000000000000000000120 /* WorkoutAppApp.swift in Sources */,
 				100000000000000000000121 /* ContentView.swift in Sources */,
 				100000000000000000000160 /* CoreModels.swift in Sources */,
+				100000000000000000000251 /* UserPreferences.swift in Sources */,
 				100000000000000000000221 /* WorkoutSessionStore.swift in Sources */,
 				100000000000000000000181 /* KnowledgeBaseLoader.swift in Sources */,
 			);
