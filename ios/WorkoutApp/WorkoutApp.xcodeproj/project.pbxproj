@@ -16,7 +16,19 @@
 		100000000000000000000210 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000211 /* Markdown */; };
 		100000000000000000000122 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000112 /* Assets.xcassets */; };
 		100000000000000000000191 /* workouts in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000190 /* workouts */; };
+		100000000000000000000233 /* WorkoutAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000230 /* WorkoutAppTests.swift */; };
+		100000000000000000000234 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 100000000000000000000232 /* XCTest.framework */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		100000000000000000000244 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 100000000000000000000100 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 100000000000000000000101;
+			remoteInfo = WorkoutApp;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		100000000000000000000110 /* WorkoutAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutAppApp.swift; sourceTree = "<group>"; };
@@ -29,6 +41,9 @@
 		100000000000000000000114 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		100000000000000000000115 /* WorkoutApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = WorkoutApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000190 /* workouts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ../../../resources/workouts; sourceTree = "<group>"; };
+		100000000000000000000230 /* WorkoutAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutAppTests.swift; sourceTree = "<group>"; };
+		100000000000000000000231 /* WorkoutAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = WorkoutAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000232 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,6 +56,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		100000000000000000000236 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000234 /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -48,7 +71,9 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000104 /* WorkoutApp */,
+				100000000000000000000235 /* WorkoutAppTests */,
 				100000000000000000000103 /* Products */,
+				100000000000000000000245 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -56,6 +81,7 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000115 /* WorkoutApp.app */,
+				100000000000000000000231 /* WorkoutAppTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -76,12 +102,28 @@
 			path = WorkoutApp;
 			sourceTree = "<group>";
 		};
+		100000000000000000000235 /* WorkoutAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000230 /* WorkoutAppTests.swift */,
+			);
+			path = WorkoutAppTests;
+			sourceTree = "<group>";
+		};
 		100000000000000000000105 /* Preview Content */ = {
 			isa = PBXGroup;
 			children = (
 				100000000000000000000113 /* Preview Assets.xcassets */,
 			);
 			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		100000000000000000000245 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000232 /* XCTest.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -108,6 +150,24 @@
 			productReference = 100000000000000000000115 /* WorkoutApp.app */;
 			productType = "com.apple.product-type.application";
 		};
+		100000000000000000000239 /* WorkoutAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 100000000000000000000242 /* Build configuration list for PBXNativeTarget "WorkoutAppTests" */;
+			buildPhases = (
+				100000000000000000000237 /* Sources */,
+				100000000000000000000238 /* Resources */,
+				100000000000000000000236 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				100000000000000000000243 /* PBXTargetDependency */,
+			);
+			name = WorkoutAppTests;
+			productName = WorkoutAppTests;
+			productReference = 100000000000000000000231 /* WorkoutAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -120,6 +180,10 @@
 				TargetAttributes = {
 					100000000000000000000101 = {
 						CreatedOnToolsVersion = 15.0;
+					};
+					100000000000000000000239 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = 100000000000000000000101;
 					};
 				};
 			};
@@ -141,6 +205,7 @@
 			projectRoot = "";
 			targets = (
 				100000000000000000000101 /* WorkoutApp */,
+				100000000000000000000239 /* WorkoutAppTests */,
 			);
 		};
 /* End PBXProject section */
@@ -152,6 +217,13 @@
 			files = (
 				100000000000000000000122 /* Assets.xcassets in Resources */,
 				100000000000000000000191 /* workouts in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		100000000000000000000238 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -170,7 +242,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		100000000000000000000237 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000233 /* WorkoutAppTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		100000000000000000000243 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 100000000000000000000101 /* WorkoutApp */;
+			targetProxy = 100000000000000000000244 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCRemoteSwiftPackageReference section */
 		100000000000000000000172 /* MarkdownUI */ = {
@@ -343,6 +431,41 @@
 			};
 			name = Release;
 		};
+		100000000000000000000240 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.WorkoutAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WorkoutApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/WorkoutApp";
+			};
+			name = Debug;
+		};
+		100000000000000000000241 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.WorkoutAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WorkoutApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/WorkoutApp";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -360,6 +483,15 @@
 			buildConfigurations = (
 				100000000000000000000202 /* Debug */,
 				100000000000000000000203 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		100000000000000000000242 /* Build configuration list for PBXNativeTarget "WorkoutAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				100000000000000000000240 /* Debug */,
+				100000000000000000000241 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
