@@ -40,10 +40,15 @@ This document uses TOGAF domains as the organizing structure and C4-style decomp
 - **Search & Browse:** filters, tags, and direct selection; search results are ordered alphabetically by workout title.
 - **Knowledge Base Loader:** Markdown reader, metadata extractor, indexer.
 - **Template/Variant Manager:** copy/derive, edit, provenance tracking.
-- **Execution Engine:** timer modes (EMOM/interval/AMRAP/stopwatch), cues, session recovery.
+- **Execution Engine:** timer modes (EMOM/interval/AMRAP/stopwatch/countdown), cues, session recovery.
 - **Logging & History:** session persistence, metrics rollups, progress views.
 - **External Source Importer:** fetch, parse, cache, provenance.
 - **LLM Orchestrator (optional):** prompt shaping, privacy gating, response normalization.
+
+### Execution Engine Notes
+- `ExecutionTimer` derives `ExecutionTimerSnapshot` values from a `TimerConfiguration` using timestamps for
+  start/pause/resume/stop, so UI can refresh using `snapshot(at:)` and recover after backgrounding.
+- The session UI should treat snapshot output as the source of truth for phase/round/remaining seconds.
 
 ### Presentation Layer (SwiftUI mock screens)
 - **Discovery:** search, "Today" highlight, recommended list, filter chips.

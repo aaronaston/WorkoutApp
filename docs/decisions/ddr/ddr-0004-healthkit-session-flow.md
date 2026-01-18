@@ -44,6 +44,8 @@ requirements, export strategy) into the session state model and timers.
    - SessionPlan derives blocks and items from WorkoutDefinition (sections, items, timer config).
    - Overall timer is a stopwatch with active duration. Block/element timers are derived from
      TimerConfiguration and current SessionPlan position.
+   - Block/element timers should use `ExecutionTimer` snapshots derived from timestamps so UI can
+     recover state after backgrounding.
 7) Persistence responsibilities:
    - In-progress session state is stored as a lightweight SessionDraft on background/terminate to
      enable recovery; it is overwritten on state transitions.
