@@ -116,3 +116,21 @@ final class WorkoutSearchIndexTests: XCTestCase {
         XCTAssertEqual(results.map(\.id), ["alpha", "bravo", "charlie"])
     }
 }
+
+final class WorkoutSearchTokenizerTests: XCTestCase {
+    func testTokenizerKeepsFractionTokens() {
+        let tokenizer = WorkoutSearchTokenizer()
+
+        let tokens = tokenizer.tokens(from: "Run 1/2 mile")
+
+        XCTAssertEqual(tokens, ["run", "1/2", "mile"])
+    }
+
+    func testTokenizerHandlesHyphenatedFractions() {
+        let tokenizer = WorkoutSearchTokenizer()
+
+        let tokens = tokenizer.tokens(from: "Intervals: 1/2-mile repeats")
+
+        XCTAssertEqual(tokens, ["intervals", "1/2", "mile", "repeats"])
+    }
+}
