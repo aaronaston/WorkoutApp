@@ -163,3 +163,15 @@ final class WorkoutSearchTokenizerTests: XCTestCase {
         XCTAssertEqual(tokens, ["intervals", "1/2", "mile", "repeats"])
     }
 }
+
+final class WorkoutAppInfoPlistTests: XCTestCase {
+    func testDeviceFamilyIncludesIphoneAndIpad() throws {
+        let families = try XCTUnwrap(
+            Bundle.main.object(forInfoDictionaryKey: "UIDeviceFamily") as? [NSNumber]
+        )
+        let values = families.map { $0.intValue }
+
+        XCTAssertTrue(values.contains(1))
+        XCTAssertTrue(values.contains(2))
+    }
+}
