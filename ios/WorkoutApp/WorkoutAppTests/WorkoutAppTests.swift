@@ -115,6 +115,35 @@ final class WorkoutSearchIndexTests: XCTestCase {
 
         XCTAssertEqual(results.map(\.id), ["alpha", "bravo", "charlie"])
     }
+
+    func testSearchIndexQuotedPhraseMatchesContiguousTokensOnly() {
+        let match = makeWorkout(id: "match", title: "Push Up Basics")
+        let split = makeWorkout(id: "split", title: "Push Day", summary: "Level up your strength")
+        let index = WorkoutSearchIndex(workouts: [match, split], embedder: EmptyEmbedder())
+
+        let results = index.search(query: "\"push up\"")
+
+        XCTAssertEqual(results.map(\.id), ["match"])
+    }
+
+    func testSearchIndexQuotedPhraseIsCaseInsensitive() {
+        let workout = makeWorkout(id: "match", title: "Push Up Basics")
+        let index = WorkoutSearchIndex(workouts: [workout], embedder: EmptyEmbedder())
+
+        let results = index.search(query: "\"PuSh Up\"")
+
+        XCTAssertEqual(results.first?.id, workout.id)
+    }
+
+    func testSearchIndexQuotedPhraseAndTokensMustAllMatch() {
+        let match = makeWorkout(id: "match", title: "Push Up Strength")
+        let phraseOnly = makeWorkout(id: "phrase", title: "Push Up Basics")
+        let index = WorkoutSearchIndex(workouts: [match, phraseOnly], embedder: EmptyEmbedder())
+
+        let results = index.search(query: "\"push up\" strength")
+
+        XCTAssertEqual(results.map(\.id), ["match"])
+    }
 }
 
 final class WorkoutSearchTokenizerTests: XCTestCase {

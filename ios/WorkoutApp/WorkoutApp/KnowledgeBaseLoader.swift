@@ -208,6 +208,7 @@ struct WorkoutSearchIndex {
     struct Entry {
         let workout: WorkoutDefinition
         let keywords: Set<String>
+        let normalizedTokenText: String
         let embedding: [Double]
         let normalizedEmbedding: [Double]
     }
@@ -222,12 +223,14 @@ struct WorkoutSearchIndex {
         let entries = workouts.map { workout in
             let keywordText = Self.keywordText(for: workout)
             let keywords = Set(tokenizer.tokens(from: keywordText))
+            let normalizedTokenText = tokenizer.tokens(from: keywordText).joined(separator: " ")
             let semanticText = Self.semanticText(for: workout, parser: parser)
             let embedding = embedder.embed(semanticText)
             let normalizedEmbedding = Self.normalized(embedding)
             return Entry(
                 workout: workout,
                 keywords: keywords,
+                normalizedTokenText: normalizedTokenText,
                 embedding: embedding,
                 normalizedEmbedding: normalizedEmbedding
             )
@@ -252,19 +255,22 @@ struct WorkoutSearchIndex {
             return []
         }
 
-        let queryTokens = tokenizer.tokens(from: trimmed)
-        guard !queryTokens.isEmpty else {
+        let queryParts = Self.parseQuery(trimmed, tokenizer: tokenizer)
+        guard !queryParts.tokens.isEmpty || !queryParts.phrases.isEmpty else {
             return []
         }
         let queryEmbedding = Self.normalized(embedder.embed(trimmed))
         let hasSemantic = !queryEmbedding.isEmpty
 
         let results = entries.compactMap { entry -> WorkoutSearchResult? in
-            guard Self.matchesAllTokens(queryTokens, in: entry.keywords) else {
+            guard Self.matchesAllTokens(queryParts.tokens, in: entry.keywords) else {
+                return nil
+            }
+            guard Self.matchesAllPhrases(queryParts.phrases, in: entry.normalizedTokenText) else {
                 return nil
             }
             let keywordScore = Self.keywordScore(
-                queryTokens: queryTokens,
+                queryTokens: queryParts.scoringTokens,
                 keywords: entry.keywords,
                 title: entry.workout.title
             )
@@ -355,9 +361,74 @@ struct WorkoutSearchIndex {
 
     private static func matchesAllTokens(_ queryTokens: [String], in keywords: Set<String>) -> Bool {
         guard !queryTokens.isEmpty else {
-            return false
+            return true
         }
         return queryTokens.allSatisfy { keywords.contains($0) }
+    }
+
+    private static func matchesAllPhrases(_ phrases: [String], in normalizedTokenText: String) -> Bool {
+        guard !phrases.isEmpty else {
+            return true
+        }
+        guard !normalizedTokenText.isEmpty else {
+            return false
+        }
+        let haystack = " \(normalizedTokenText) "
+        return phrases.allSatisfy { phrase in
+            haystack.contains(" \(phrase) ")
+        }
+    }
+
+    private struct QueryParts {
+        let tokens: [String]
+        let phrases: [String]
+        let scoringTokens: [String]
+    }
+
+    private static func parseQuery(_ query: String, tokenizer: WorkoutSearchTokenizer) -> QueryParts {
+        let normalized = query.lowercased()
+        let pattern = "\"([^\"]+)\""
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            let tokens = tokenizer.tokens(from: normalized)
+            return QueryParts(tokens: tokens, phrases: [], scoringTokens: tokens)
+        }
+
+        let range = NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
+        let matches = regex.matches(in: normalized, options: [], range: range)
+        var phraseTokensList: [[String]] = []
+        for match in matches {
+            guard let matchRange = Range(match.range(at: 1), in: normalized) else {
+                continue
+            }
+            let phraseText = String(normalized[matchRange])
+            let phraseTokens = tokenizer.tokens(from: phraseText)
+            if !phraseTokens.isEmpty {
+                phraseTokensList.append(phraseTokens)
+            }
+        }
+
+        var cleaned = normalized
+        for match in matches.reversed() {
+            guard let matchRange = Range(match.range, in: cleaned) else {
+                continue
+            }
+            cleaned.replaceSubrange(matchRange, with: " ")
+        }
+
+        var tokens = tokenizer.tokens(from: cleaned)
+        var phrases: [String] = []
+        var scoringTokens = tokens
+        for phraseTokens in phraseTokensList {
+            if phraseTokens.count == 1, let token = phraseTokens.first {
+                tokens.append(token)
+                scoringTokens.append(token)
+            } else {
+                phrases.append(phraseTokens.joined(separator: " "))
+                scoringTokens.append(contentsOf: phraseTokens)
+            }
+        }
+
+        return QueryParts(tokens: tokens, phrases: phrases, scoringTokens: scoringTokens)
     }
 
     private static func combinedScore(keyword: Double, semantic: Double) -> Double {
