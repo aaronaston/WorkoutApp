@@ -367,7 +367,9 @@ struct SettingsMockView: View {
         Form {
             Section(header: Text("Preferences")) {
                 Toggle("Calendar Sync", isOn: $preferencesStore.preferences.calendarSyncEnabled)
+                    .accessibilityIdentifier("settings.calendarSyncToggle")
                 Toggle("HealthKit Sync", isOn: $preferencesStore.preferences.healthKitSyncEnabled)
+                    .accessibilityIdentifier("settings.healthKitSyncToggle")
             }
 
             Section(header: Text("Discovery")) {

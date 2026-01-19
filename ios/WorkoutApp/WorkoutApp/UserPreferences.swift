@@ -90,6 +90,15 @@ final class UserPreferencesStore: ObservableObject {
         preferences = Self.loadPreferences(from: fileURL, decoder: decoder)
     }
 
+    func reset() {
+        do {
+            try FileManager.default.removeItem(at: fileURL)
+        } catch {
+            // Ignore cleanup errors to keep UI responsive in tests.
+        }
+        preferences = .default
+    }
+
     private func savePreferences() {
         do {
             let data = try encoder.encode(preferences)
