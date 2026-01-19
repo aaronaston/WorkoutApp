@@ -18,6 +18,7 @@
 		100000000000000000000122 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000112 /* Assets.xcassets */; };
 		100000000000000000000191 /* workouts in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000190 /* workouts */; };
 		100000000000000000000233 /* WorkoutAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000230 /* WorkoutAppTests.swift */; };
+		100000000000000000000261 /* UserPreferencesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000260 /* UserPreferencesStoreTests.swift */; };
 		100000000000000000000234 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 100000000000000000000232 /* XCTest.framework */; };
 /* End PBXBuildFile section */
 
@@ -44,6 +45,7 @@
 		100000000000000000000115 /* WorkoutApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = WorkoutApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000190 /* workouts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ../../../resources/workouts; sourceTree = "<group>"; };
 		100000000000000000000230 /* WorkoutAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutAppTests.swift; sourceTree = "<group>"; };
+		100000000000000000000260 /* UserPreferencesStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserPreferencesStoreTests.swift; sourceTree = "<group>"; };
 		100000000000000000000231 /* WorkoutAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = WorkoutAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000232 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -109,6 +111,7 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000230 /* WorkoutAppTests.swift */,
+				100000000000000000000260 /* UserPreferencesStoreTests.swift */,
 			);
 			path = WorkoutAppTests;
 			sourceTree = "<group>";
@@ -251,6 +254,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000233 /* WorkoutAppTests.swift in Sources */,
+				100000000000000000000261 /* UserPreferencesStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
