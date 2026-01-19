@@ -361,14 +361,13 @@ struct HistoryMockView: View {
 }
 
 struct SettingsMockView: View {
-    @State private var calendarSync = false
-    @State private var healthSync = true
+    @EnvironmentObject private var preferencesStore: UserPreferencesStore
 
     var body: some View {
         Form {
             Section(header: Text("Preferences")) {
-                Toggle("Calendar Sync", isOn: $calendarSync)
-                Toggle("HealthKit Sync", isOn: $healthSync)
+                Toggle("Calendar Sync", isOn: $preferencesStore.preferences.calendarSyncEnabled)
+                Toggle("HealthKit Sync", isOn: $preferencesStore.preferences.healthKitSyncEnabled)
             }
 
             Section(header: Text("Discovery")) {
@@ -609,4 +608,5 @@ struct MockSession: Identifiable {
 
 #Preview {
     ContentView()
+        .environmentObject(UserPreferencesStore())
 }
