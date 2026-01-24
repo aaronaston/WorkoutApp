@@ -1,22 +1,33 @@
 import MarkdownUI
 import SwiftUI
 
+enum AppTab: Hashable {
+    case discover
+    case session
+    case history
+    case settings
+}
+
 struct ContentView: View {
+    @State private var selectedTab: AppTab = .discover
+
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             NavigationStack {
-                DiscoveryView()
+                DiscoveryView(selectedTab: $selectedTab)
             }
             .tabItem {
                 Label("Discover", systemImage: "sparkles")
             }
+            .tag(AppTab.discover)
 
             NavigationStack {
-                SessionMockView()
+                SessionView()
             }
             .tabItem {
                 Label("Session", systemImage: "timer")
             }
+            .tag(AppTab.session)
 
             NavigationStack {
                 HistoryMockView()
@@ -24,6 +35,7 @@ struct ContentView: View {
             .tabItem {
                 Label("History", systemImage: "chart.bar")
             }
+            .tag(AppTab.history)
 
             NavigationStack {
                 SettingsMockView()
@@ -31,11 +43,13 @@ struct ContentView: View {
             .tabItem {
                 Label("Settings", systemImage: "gearshape")
             }
+            .tag(AppTab.settings)
         }
     }
 }
 
 struct DiscoveryView: View {
+    @Binding var selectedTab: AppTab
     @State private var workouts: [WorkoutDefinition] = []
     @State private var loadError: String?
     @State private var hasLoaded = false
@@ -84,7 +98,7 @@ struct DiscoveryView: View {
                         } else {
                             ForEach(searchResults) { result in
                                 NavigationLink {
-                                    WorkoutDetailView(workout: result.workout)
+                                    WorkoutDetailView(workout: result.workout, selectedTab: $selectedTab)
                                 } label: {
                                     WorkoutRow(workout: result.workout)
                                 }
@@ -99,7 +113,7 @@ struct DiscoveryView: View {
                                 .font(.headline)
 
                             NavigationLink {
-                                WorkoutDetailView(workout: highlightedWorkout)
+                                WorkoutDetailView(workout: highlightedWorkout, selectedTab: $selectedTab)
                             } label: {
                                 HighlightCard(
                                     title: highlightedWorkout.title,
@@ -117,7 +131,7 @@ struct DiscoveryView: View {
 
                         ForEach(workouts) { workout in
                             NavigationLink {
-                                WorkoutDetailView(workout: workout)
+                                WorkoutDetailView(workout: workout, selectedTab: $selectedTab)
                             } label: {
                                 WorkoutRow(workout: workout)
                             }
@@ -194,7 +208,9 @@ struct DiscoveryView: View {
 }
 
 struct WorkoutDetailView: View {
+    @EnvironmentObject private var sessionState: SessionStateStore
     let workout: WorkoutDefinition
+    @Binding var selectedTab: AppTab
 
     private var sectionCount: Int {
         workout.content.parsedSections?.count ?? 0
@@ -259,7 +275,10 @@ struct WorkoutDetailView: View {
                     }
                 }
 
-                Button(action: {}) {
+                Button {
+                    sessionState.startSession(workout: workout)
+                    selectedTab = .session
+                } label: {
                     Text("Start Session")
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -289,44 +308,82 @@ struct WorkoutDetailView: View {
     }
 }
 
-struct SessionMockView: View {
+struct SessionView: View {
+    @EnvironmentObject private var sessionState: SessionStateStore
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Active Session")
-                        .font(.title2)
-                        .fontWeight(.semibold)
+                if let session = sessionState.activeSession {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Active Session")
+                            .font(.title2)
+                            .fontWeight(.semibold)
 
-                    Text("Strength Hinge + Push")
-                        .foregroundStyle(.secondary)
-                }
+                        Text(session.workout.title)
+                            .foregroundStyle(.secondary)
+                    }
 
-                HighlightCard(
-                    title: "Interval Timer",
-                    subtitle: "00:06 remaining",
-                    detail: "Round 2 of 4 - Rest"
-                )
+                    TimelineView(.periodic(from: Date(), by: 1.0)) { context in
+                        let elapsed = max(0, Int(context.date.timeIntervalSince(session.startedAt)))
+                        HighlightCard(
+                            title: "Session Timer",
+                            subtitle: formattedDuration(elapsed),
+                            detail: "Overall workout duration"
+                        )
+                    }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Current Block")
-                        .font(.headline)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Sections")
+                            .font(.headline)
 
-                    WorkoutBlockMock(title: "A1 - Hinge Press", detail: "3x8 @ 70%")
-                    WorkoutBlockMock(title: "A2 - Push Up", detail: "3x12 controlled")
-                }
+                        if let sections = session.workout.content.parsedSections, !sections.isEmpty {
+                            ForEach(sections) { section in
+                                WorkoutSectionCard(section: section)
+                            }
+                        } else {
+                            Text("No structured sections parsed yet.")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Log")
-                        .font(.headline)
+                    Button(role: .destructive) {
+                        sessionState.endSession()
+                    } label: {
+                        Text("End Session")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red.opacity(0.15))
+                            .cornerRadius(12)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("No Active Session")
+                            .font(.title2)
+                            .fontWeight(.semibold)
 
-                    LogRowMock(exercise: "Hinge Press", detail: "Set 2 - 8 reps")
-                    LogRowMock(exercise: "Push Up", detail: "Set 2 - 12 reps")
+                        Text(sessionState.phase == .finished
+                             ? "Session complete. Start a new workout to see it here."
+                             : "Start a workout to begin a session.")
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .padding()
         }
         .navigationTitle("Session")
+    }
+
+    private func formattedDuration(_ totalSeconds: Int) -> String {
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 }
 
