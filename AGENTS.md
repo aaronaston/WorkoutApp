@@ -21,12 +21,22 @@ For full workflow details: `bd prime`
 - Do not work in the main worktree except for integration tasks.
 - Each agent uses their own git worktree directory.
 - Use `bd merge-slot` to serialize landing to `main`.
+- Configure a Beads sync-branch so daemon mode is safe in worktrees and issue commits never touch `main`.
 
 **One-time setup (run from repo root):**
 
 ```bash
 git worktree add .worktrees/agent-a
 git worktree add .worktrees/agent-b
+```
+
+**One-time Beads sync-branch setup (run once in any worktree):**
+
+```bash
+# Use a dedicated branch for Beads issue commits
+bd config set sync.branch beads-sync
+# Older versions may expect:
+# bd config set sync-branch beads-sync
 ```
 
 **Agent bootstrap (recommended):**
@@ -46,6 +56,13 @@ git checkout -b agent-a/<issue>
 # work, commit locally
 ```
 
+**Safety checks (run anytime if unsure):**
+
+```bash
+git worktree list            # verify you're in a non-main worktree
+bd config get sync.branch    # ensure sync branch is set
+```
+
 **Landing (serialized):**
 
 ```bash
@@ -63,6 +80,12 @@ git worktree remove .worktrees/agent-a
 git branch -d agent-a/<issue>
 git worktree prune
 ```
+
+**Notes on worktree locations:**
+- Worktree working directories can live anywhere (this repo uses `.worktrees/`).
+- Git’s metadata for worktrees lives under `.git/worktrees/`.
+- Beads’ sync-branch worktrees live under `.git/beads-worktrees/` (created automatically when sync-branch is configured).
+- Updates to `.beads/issues.jsonl` are shared across worktrees and will appear in the main repo’s `.beads/` directory by design.
 
 ## Codex Sandbox Note
 
