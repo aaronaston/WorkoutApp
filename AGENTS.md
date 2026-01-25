@@ -22,6 +22,7 @@ For full workflow details: `bd prime`
 - Each agent uses their own git worktree directory.
 - Use `bd merge-slot` to serialize landing to `main`.
 - Configure a Beads sync-branch so daemon mode is safe in worktrees and issue commits never touch `main`.
+- With a sync-branch configured, daemon mode is enabled and safe in worktrees. Without it, daemon is auto-disabled in worktrees.
 
 **One-time setup (run from repo root):**
 
@@ -35,8 +36,6 @@ git worktree add .worktrees/agent-b
 ```bash
 # Use a dedicated branch for Beads issue commits
 bd config set sync.branch beads-sync
-# Older versions may expect:
-# bd config set sync-branch beads-sync
 ```
 
 **One-time merge-slot setup (run once per rig):**
