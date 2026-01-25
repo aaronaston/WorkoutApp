@@ -5,3 +5,7 @@ ios/WorkoutApp/WorkoutApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/*
 !ios/WorkoutApp/WorkoutApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 .worktrees/
 .bd-env
+.beads/beads.db
+.beads/beads.db-*
+.beads/export-state/
+.bd-env
