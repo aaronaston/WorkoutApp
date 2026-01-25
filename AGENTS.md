@@ -21,21 +21,13 @@ For full workflow details: `bd prime`
 - Do not work in the main worktree except for integration tasks.
 - Each agent uses their own git worktree directory.
 - Use `bd merge-slot` to serialize landing to `main`.
-- Configure a Beads sync-branch so daemon mode is safe in worktrees and issue commits never touch `main`.
-- With a sync-branch configured, daemon mode is enabled and safe in worktrees. Without it, daemon is auto-disabled in worktrees.
+- Treat `main` as the sync target for `.beads/issues.jsonl` (no separate sync branch).
 
 **One-time setup (run from repo root):**
 
 ```bash
 git worktree add .worktrees/agent-a
 git worktree add .worktrees/agent-b
-```
-
-**One-time Beads sync-branch setup (run once in any worktree):**
-
-```bash
-# Use a dedicated branch for Beads issue commits
-bd config set sync.branch beads-sync
 ```
 
 **One-time merge-slot setup (run once per rig):**
@@ -67,7 +59,6 @@ git checkout -b agent-a/<issue>
 
 ```bash
 git worktree list            # verify you're in a non-main worktree
-bd config get sync.branch    # ensure sync branch is set
 ```
 
 **Landing (serialized):**
@@ -76,7 +67,6 @@ bd config get sync.branch    # ensure sync branch is set
 bd merge-slot check         # verify slot exists/availability
 bd merge-slot acquire --holder "$BD_ACTOR"
 git pull --rebase
-bd sync
 git push
 bd merge-slot release --holder "$BD_ACTOR"
 ```
@@ -99,6 +89,7 @@ git fetch origin
 git checkout main
 git pull --rebase origin main
 git merge --ff-only agent-a/<issue>
+bd sync
 git push origin main
 ```
 
@@ -125,17 +116,16 @@ Assumptions:
    - Branch: agent-a/<issue> (rebasing your branch on origin/main)
 
 3) bd sync
-   - CWD: agent worktree
-   - Branch: agent-a/<issue>
-   - Writes: beads-sync branch (not main)
+   - CWD: main worktree
+   - Branch: main
+   - Writes: .beads/issues.jsonl to main
 
 4) git push -u origin agent-a/<issue>
    - CWD: agent worktree
    - Branch: agent-a/<issue>
 
 5) Main worktree
-   - Only for final integration if your flow merges directly to main.
-   - Otherwise, open PR from agent-a/<issue> to main.
+   - Use for final integration and bd sync.
 ```
 
 **Cleanup when done (optional but recommended):**
@@ -149,19 +139,18 @@ git worktree prune
 **Notes on worktree locations:**
 - Worktree working directories can live anywhere (this repo uses `.worktrees/`).
 - Git’s metadata for worktrees lives under `.git/worktrees/`.
-- Beads’ sync-branch worktrees live under `.git/beads-worktrees/` (created automatically when sync-branch is configured).
 - Updates to `.beads/issues.jsonl` are shared across worktrees and will appear in the main repo’s `.beads/` directory by design.
 
 ## Beads Data Model (DB vs JSONL vs Daemon)
 
 **Source of truth:** the SQLite DB at `.beads/beads.db` in the main repo root.  
-**Sync artifact:** `.beads/issues.jsonl` (exported from the DB and committed to `beads-sync`).  
+**Sync artifact:** `.beads/issues.jsonl` (exported from the DB and committed to `main`).  
 **Daemon:** a convenience layer that keeps the DB and JSONL fresh; it does not change the data model.
 
 **Recommended multi-agent setup (worktrees):**
 - Use a single shared DB (the main repo’s `.beads/beads.db`) from every worktree.
 - Set `BD_ACTOR` per agent for audit trail + merge-slot ownership.
-- Prefer daemon mode for normal use; use `--no-daemon` only for debugging or if the daemon is misbehaving.
+- Prefer direct mode in worktrees; run `bd sync` from the main worktree to keep `main` updated.
 
 **Suggested per-worktree `.bd-env`:**
 
