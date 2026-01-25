@@ -41,6 +41,7 @@ fi
 # Set BD_ACTOR based on worktree name for consistent attribution.
 cat <<EOF > "$worktree_dir/.bd-env"
 export BD_ACTOR="$agent_name"
+export BEADS_DB="$repo_root/.beads/beads.db"
 EOF
 
 echo "Next steps:"
