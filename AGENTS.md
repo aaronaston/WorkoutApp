@@ -39,6 +39,14 @@ bd config set sync.branch beads-sync
 # bd config set sync-branch beads-sync
 ```
 
+**One-time merge-slot setup (run once per rig):**
+
+```bash
+bd merge-slot create
+```
+
+This creates `<prefix>-merge-slot` (label `gt:slot`) used to serialize merges.
+
 **Agent bootstrap (recommended):**
 
 ```bash
@@ -51,7 +59,7 @@ scripts/agent-bootstrap.sh agent-a bd-1234
 cd .worktrees/agent-a
 source .bd-env           # sets BD_ACTOR=agent-a (or export BD_ACTOR=agent-a)
 bd ready
-bd slot claim agent-a   # optional: mark active agent
+bd slot set "$BD_ACTOR" role active   # optional: mark active agent
 git checkout -b agent-a/<issue>
 # work, commit locally
 ```
@@ -66,11 +74,42 @@ bd config get sync.branch    # ensure sync branch is set
 **Landing (serialized):**
 
 ```bash
-bd merge-slot claim
+bd merge-slot check         # verify slot exists/availability
+bd merge-slot acquire --holder "$BD_ACTOR"
 git pull --rebase
 bd sync
 git push
-bd merge-slot release
+bd merge-slot release --holder "$BD_ACTOR"
+```
+
+**Command context (where to run what):**
+
+Assumptions:
+- You have a per-agent worktree (e.g. `.worktrees/agent-a`).
+- You ran `source .bd-env` in that worktree.
+
+```text
+1) bd merge-slot check / acquire / release
+   - CWD: agent worktree (e.g. .worktrees/agent-a)
+   - Branch: agent-a/<issue>
+   - DB: uses BEADS_DB from .bd-env (shared main repo DB)
+
+2) git pull --rebase origin main
+   - CWD: agent worktree
+   - Branch: agent-a/<issue> (rebasing your branch on origin/main)
+
+3) bd sync
+   - CWD: agent worktree
+   - Branch: agent-a/<issue>
+   - Writes: beads-sync branch (not main)
+
+4) git push -u origin agent-a/<issue>
+   - CWD: agent worktree
+   - Branch: agent-a/<issue>
+
+5) Main worktree
+   - Only for final integration if your flow merges directly to main.
+   - Otherwise, open PR from agent-a/<issue> to main.
 ```
 
 **Cleanup when done (optional but recommended):**

@@ -49,6 +49,7 @@ cat <<EOF
   cd "$worktree_dir"
   source .bd-env           # sets BD_ACTOR=$agent_name (or export BD_ACTOR=$agent_name)
   bd ready
-  bd slot claim "$agent_name"   # optional
+  bd slot set "$agent_name" role active   # optional
+  bd merge-slot check            # verify merge-slot exists/availability
   # work + commit
 EOF
