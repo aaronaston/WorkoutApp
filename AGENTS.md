@@ -87,6 +87,28 @@ git worktree prune
 - Beads’ sync-branch worktrees live under `.git/beads-worktrees/` (created automatically when sync-branch is configured).
 - Updates to `.beads/issues.jsonl` are shared across worktrees and will appear in the main repo’s `.beads/` directory by design.
 
+## Beads Data Model (DB vs JSONL vs Daemon)
+
+**Source of truth:** the SQLite DB at `.beads/beads.db` in the main repo root.  
+**Sync artifact:** `.beads/issues.jsonl` (exported from the DB and committed to `beads-sync`).  
+**Daemon:** a convenience layer that keeps the DB and JSONL fresh; it does not change the data model.
+
+**Recommended multi-agent setup (worktrees):**
+- Use a single shared DB (the main repo’s `.beads/beads.db`) from every worktree.
+- Set `BD_ACTOR` per agent for audit trail + merge-slot ownership.
+- Prefer daemon mode for normal use; use `--no-daemon` only for debugging or if the daemon is misbehaving.
+
+**Suggested per-worktree `.bd-env`:**
+
+```bash
+export BD_ACTOR=agent-a
+export BEADS_DB=/Users/aaron/development/WorkoutApp/.beads/beads.db
+```
+
+**Why this matters:** if the DB path isn’t pinned, beads may auto-discover a different
+database per worktree or attach to a daemon started from the main repo, leading to
+surprising state. Pinning `BEADS_DB` keeps all agents in sync.
+
 ## Codex Sandbox Note
 
 Beads may fail to start or lock under Codex sandboxing. Launch Codex with:
