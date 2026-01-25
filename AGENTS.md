@@ -82,6 +82,33 @@ git push
 bd merge-slot release --holder "$BD_ACTOR"
 ```
 
+**Local integration to main (no PR, same machine):**
+
+From agent worktree (your feature branch):
+
+```bash
+source .bd-env
+bd merge-slot check
+bd merge-slot acquire --holder "$BD_ACTOR"
+git pull --rebase origin main
+```
+
+From the main worktree (local main branch):
+
+```bash
+git fetch origin
+git checkout main
+git pull --rebase origin main
+git merge --ff-only agent-a/<issue>
+git push origin main
+```
+
+Then back in the agent worktree:
+
+```bash
+bd merge-slot release --holder "$BD_ACTOR"
+```
+
 **Command context (where to run what):**
 
 Assumptions:
