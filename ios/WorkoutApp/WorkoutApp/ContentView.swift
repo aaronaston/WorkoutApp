@@ -48,6 +48,14 @@ struct ContentView: View {
     }
 }
 
+private enum DurationFilter: String, CaseIterable, Identifiable {
+    case short = "<= 20 min"
+    case medium = "25-40 min"
+    case long = "45+ min"
+
+    var id: String { rawValue }
+}
+
 struct DiscoveryView: View {
     @Binding var selectedTab: AppTab
     @State private var workouts: [WorkoutDefinition] = []
@@ -57,9 +65,27 @@ struct DiscoveryView: View {
     @State private var searchResults: [WorkoutSearchResult] = []
     @State private var searchIndex: WorkoutSearchIndex?
     @State private var searchTask: Task<Void, Never>?
+    @State private var selectedEquipment: Set<String> = []
+    @State private var selectedLocations: Set<String> = []
+    @State private var selectedDurations: Set<DurationFilter> = []
+
+    private let equipmentFilterOptions = ["Bodyweight", "Dumbbell", "Barbell", "Band", "Kettlebell"]
+    private let locationFilterOptions = ["Home", "Gym", "Away"]
 
     private var highlightedWorkout: WorkoutDefinition? {
-        workouts.first
+        filteredWorkouts.first
+    }
+
+    private var hasActiveFilters: Bool {
+        !selectedEquipment.isEmpty || !selectedLocations.isEmpty || !selectedDurations.isEmpty
+    }
+
+    private var filteredWorkouts: [WorkoutDefinition] {
+        workouts.filter { workoutMatchesFilters($0) }
+    }
+
+    private var filteredSearchResults: [WorkoutSearchResult] {
+        searchResults.filter { workoutMatchesFilters($0.workout) }
     }
 
     var body: some View {
@@ -92,11 +118,11 @@ struct DiscoveryView: View {
                         Text("Results")
                             .font(.headline)
 
-                        if searchResults.isEmpty {
-                            Text("No workouts match that search.")
+                        if filteredSearchResults.isEmpty {
+                            Text(hasActiveFilters ? "No workouts match that search and filters." : "No workouts match that search.")
                                 .foregroundStyle(.secondary)
                         } else {
-                            ForEach(searchResults) { result in
+                            ForEach(filteredSearchResults) { result in
                                 NavigationLink {
                                     WorkoutDetailView(workout: result.workout, selectedTab: $selectedTab)
                                 } label: {
@@ -107,47 +133,116 @@ struct DiscoveryView: View {
                         }
                     }
                 } else {
-                    if let highlightedWorkout {
+                    if filteredWorkouts.isEmpty {
+                        Text(hasActiveFilters ? "No workouts match those filters." : "No workouts available.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        if let highlightedWorkout {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Today")
+                                    .font(.headline)
+
+                                NavigationLink {
+                                    WorkoutDetailView(workout: highlightedWorkout, selectedTab: $selectedTab)
+                                } label: {
+                                    HighlightCard(
+                                        title: highlightedWorkout.title,
+                                        subtitle: sectionSummary(for: highlightedWorkout),
+                                        detail: "Loaded from the knowledge base"
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Today")
+                            Text("Recommended")
                                 .font(.headline)
 
-                            NavigationLink {
-                                WorkoutDetailView(workout: highlightedWorkout, selectedTab: $selectedTab)
-                            } label: {
-                                HighlightCard(
-                                    title: highlightedWorkout.title,
-                                    subtitle: sectionSummary(for: highlightedWorkout),
-                                    detail: "Loaded from the knowledge base"
-                                )
+                            ForEach(filteredWorkouts) { workout in
+                                NavigationLink {
+                                    WorkoutDetailView(workout: workout, selectedTab: $selectedTab)
+                                } label: {
+                                    WorkoutRow(workout: workout)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Recommended")
-                            .font(.headline)
-
-                        ForEach(workouts) { workout in
-                            NavigationLink {
-                                WorkoutDetailView(workout: workout, selectedTab: $selectedTab)
-                            } label: {
-                                WorkoutRow(workout: workout)
-                            }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Filters")
-                        .font(.headline)
-
                     HStack(spacing: 8) {
-                        MockChip(title: "25-40 min")
-                        MockChip(title: "No barbell")
-                        MockChip(title: "Home")
+                        Text("Filters")
+                            .font(.headline)
+
+                        if hasActiveFilters {
+                            Button("Clear") {
+                                selectedEquipment.removeAll()
+                                selectedLocations.removeAll()
+                                selectedDurations.removeAll()
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Equipment")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(equipmentFilterOptions, id: \.self) { option in
+                                    FilterChip(
+                                        title: option,
+                                        isSelected: selectedEquipment.contains(option)
+                                    ) {
+                                        toggleSelection(option, set: $selectedEquipment)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Duration")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(DurationFilter.allCases) { option in
+                                    FilterChip(
+                                        title: option.rawValue,
+                                        isSelected: selectedDurations.contains(option)
+                                    ) {
+                                        toggleSelection(option, set: $selectedDurations)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Location")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(locationFilterOptions, id: \.self) { option in
+                                    FilterChip(
+                                        title: option,
+                                        isSelected: selectedLocations.contains(option)
+                                    ) {
+                                        toggleSelection(option, set: $selectedLocations)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -176,34 +271,171 @@ struct DiscoveryView: View {
         }
 
         hasLoaded = true
-        do {
-            workouts = try KnowledgeBaseLoader().loadWorkouts()
-            searchIndex = WorkoutSearchIndex(workouts: workouts)
-            updateSearchResults()
-        } catch {
-            loadError = error.localizedDescription
+        Task.detached(priority: .userInitiated) {
+            do {
+                let loadedWorkouts = try KnowledgeBaseLoader().loadWorkouts()
+                let index = WorkoutSearchIndex(workouts: loadedWorkouts)
+                await MainActor.run {
+                    workouts = loadedWorkouts
+                    searchIndex = index
+                    scheduleSearch()
+                }
+            } catch {
+                await MainActor.run {
+                    loadError = error.localizedDescription
+                }
+            }
         }
     }
 
     private func scheduleSearch() {
         searchTask?.cancel()
-        searchTask = Task { @MainActor in
+        let query = searchQuery
+        let index = searchIndex
+        searchTask = Task {
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else {
                 return
             }
-            updateSearchResults()
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, let index else {
+                await MainActor.run {
+                    searchResults = []
+                }
+                return
+            }
+            let results = await Task.detached(priority: .userInitiated) {
+                index.search(query: trimmed, limit: 25)
+            }.value
+            guard !Task.isCancelled else {
+                return
+            }
+            await MainActor.run {
+                searchResults = results
+            }
         }
     }
 
-    @MainActor
-    private func updateSearchResults() {
-        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let searchIndex else {
-            searchResults = []
-            return
+    private func workoutMatchesFilters(_ workout: WorkoutDefinition) -> Bool {
+        if !selectedEquipment.isEmpty {
+            let equipment = workoutEquipmentTags(for: workout)
+            if equipment.intersection(selectedEquipment).isEmpty {
+                return false
+            }
         }
-        searchResults = searchIndex.search(query: trimmed, limit: 25)
+
+        if !selectedLocations.isEmpty {
+            guard let location = workoutLocationTag(for: workout) else {
+                return false
+            }
+            if !selectedLocations.contains(location) {
+                return false
+            }
+        }
+
+        if !selectedDurations.isEmpty {
+            guard let duration = estimatedDurationMinutes(for: workout) else {
+                return false
+            }
+            let bucket = durationBucket(for: duration)
+            if !selectedDurations.contains(bucket) {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    private func workoutLocationTag(for workout: WorkoutDefinition) -> String? {
+        if let tag = workout.metadata.locationTag, !tag.isEmpty {
+            return tag
+        }
+        let title = workout.title.lowercased()
+        if title.contains("home") {
+            return "Home"
+        }
+        if title.contains("away") {
+            return "Away"
+        }
+        if title.contains("gym") {
+            return "Gym"
+        }
+        return nil
+    }
+
+    private func workoutEquipmentTags(for workout: WorkoutDefinition) -> Set<String> {
+        if !workout.metadata.equipmentTags.isEmpty {
+            return Set(workout.metadata.equipmentTags)
+        }
+
+        let haystack = (workout.title + " " + workout.content.sourceMarkdown).lowercased()
+        var tags: [String] = []
+        if haystack.contains("bodyweight") {
+            tags.append("Bodyweight")
+        }
+        if haystack.contains("dumbbell") {
+            tags.append("Dumbbell")
+        }
+        if haystack.contains("barbell") {
+            tags.append("Barbell")
+        }
+        if haystack.contains("band") {
+            tags.append("Band")
+        }
+        if haystack.contains("kettlebell") {
+            tags.append("Kettlebell")
+        }
+        return Set(tags)
+    }
+
+    private func estimatedDurationMinutes(for workout: WorkoutDefinition) -> Int? {
+        if let duration = workout.metadata.durationMinutes {
+            return duration
+        }
+
+        let markdown = workout.content.sourceMarkdown.lowercased()
+        if let minutes = Self.extractDurationMinutes(from: markdown) {
+            return minutes
+        }
+
+        let itemCount = workout.content.parsedSections?.reduce(0) { $0 + $1.items.count } ?? 0
+        guard itemCount > 0 else {
+            return nil
+        }
+        return max(12, min(60, itemCount * 2))
+    }
+
+    private func durationBucket(for minutes: Int) -> DurationFilter {
+        if minutes <= 20 {
+            return .short
+        }
+        if minutes <= 40 {
+            return .medium
+        }
+        return .long
+    }
+
+    private static func extractDurationMinutes(from text: String) -> Int? {
+        let pattern = "\\b(\\d{1,3})\\s*(?:min|mins|minutes)\\b"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              let minutesRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return Int(String(text[minutesRange]))
+    }
+
+    private func toggleSelection<T: Hashable>(_ value: T, set: Binding<Set<T>>) {
+        var updated = set.wrappedValue
+        if updated.contains(value) {
+            updated.remove(value)
+        } else {
+            updated.insert(value)
+        }
+        set.wrappedValue = updated
     }
 }
 
@@ -609,6 +841,25 @@ struct MockChip: View {
             .padding(.vertical, 6)
             .background(Color(.tertiarySystemBackground))
             .cornerRadius(999)
+    }
+}
+
+struct FilterChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(isSelected ? Color.accentColor : Color(.tertiarySystemBackground))
+                .cornerRadius(999)
+        }
+        .buttonStyle(.plain)
     }
 }
 
