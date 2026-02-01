@@ -30,7 +30,7 @@ struct ContentView: View {
             .tag(AppTab.session)
 
             NavigationStack {
-                HistoryMockView()
+                HistoryView()
             }
             .tabItem {
                 Label("History", systemImage: "chart.bar")
@@ -607,45 +607,241 @@ struct SessionView: View {
         .navigationTitle("Session")
     }
 
-    private func formattedDuration(_ totalSeconds: Int) -> String {
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-        let seconds = totalSeconds % 60
-
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
 }
 
-struct HistoryMockView: View {
-    private let history = MockSession.sample
+struct HistoryView: View {
+    @EnvironmentObject private var sessionStore: WorkoutSessionStore
+
+    private var sessions: [WorkoutSession] {
+        sessionStore.sessions.sorted { sessionDate(for: $0) > sessionDate(for: $1) }
+    }
+
+    private var weekStart: Date {
+        Calendar.current.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+    }
+
+    private var thisWeek: [WorkoutSession] {
+        sessions.filter { sessionDate(for: $0) >= weekStart }
+    }
+
+    private var earlier: [WorkoutSession] {
+        sessions.filter { sessionDate(for: $0) < weekStart }
+    }
+
+    private var totalMinutesThisWeek: Int {
+        thisWeek.reduce(0) { total, session in
+            total + max(0, sessionDurationMinutes(session))
+        }
+    }
 
     var body: some View {
         List {
-            Section(header: Text("This Week")) {
-                HStack(spacing: 16) {
-                    MockStat(title: "4", subtitle: "sessions")
-                    MockStat(title: "165", subtitle: "minutes")
-                    MockStat(title: "2", subtitle: "new PRs")
+            if sessions.isEmpty {
+                Section {
+                    Text("No sessions logged yet.")
+                        .foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 8)
-            }
-
-            Section(header: Text("Recent Sessions")) {
-                ForEach(history) { session in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(session.title)
-                            .fontWeight(.semibold)
-                        Text(session.detail)
-                            .foregroundStyle(.secondary)
+            } else {
+                Section(header: Text("This Week")) {
+                    HStack(spacing: 16) {
+                        HistoryStat(title: "\(thisWeek.count)", subtitle: "sessions")
+                        HistoryStat(title: "\(totalMinutesThisWeek)", subtitle: "minutes")
+                        HistoryStat(title: "—", subtitle: "new PRs")
                     }
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 8)
+                }
+
+                if !thisWeek.isEmpty {
+                    Section(header: Text("This Week Sessions")) {
+                        ForEach(thisWeek) { session in
+                            NavigationLink {
+                                SessionDetailView(session: session)
+                            } label: {
+                                SessionRow(session: session)
+                            }
+                        }
+                    }
+                }
+
+                if !earlier.isEmpty {
+                    Section(header: Text("Earlier Sessions")) {
+                        ForEach(earlier) { session in
+                            NavigationLink {
+                                SessionDetailView(session: session)
+                            } label: {
+                                SessionRow(session: session)
+                            }
+                        }
+                    }
                 }
             }
         }
         .navigationTitle("History")
+    }
+
+    private func sessionDate(for session: WorkoutSession) -> Date {
+        session.endedAt ?? session.startedAt
+    }
+
+    private func sessionDurationMinutes(_ session: WorkoutSession) -> Int {
+        if let durationSeconds = session.durationSeconds {
+            return Int(round(Double(durationSeconds) / 60.0))
+        }
+        guard let endedAt = session.endedAt else { return 0 }
+        return Int(round(endedAt.timeIntervalSince(session.startedAt) / 60.0))
+    }
+}
+
+struct SessionRow: View {
+    let session: WorkoutSession
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(session.workout.title)
+                .fontWeight(.semibold)
+
+            Text(SessionDateFormatter.shared.string(from: session.endedAt ?? session.startedAt))
+                .foregroundStyle(.secondary)
+
+            if let duration = sessionDurationText() {
+                Text(duration)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func sessionDurationText() -> String? {
+        let seconds: Int
+        if let durationSeconds = session.durationSeconds {
+            seconds = durationSeconds
+        } else if let endedAt = session.endedAt {
+            seconds = Int(endedAt.timeIntervalSince(session.startedAt))
+        } else {
+            return nil
+        }
+        return "Duration \(formattedDuration(max(0, seconds)))"
+    }
+}
+
+struct SessionDetailView: View {
+    let session: WorkoutSession
+
+    private var completedDate: Date {
+        session.endedAt ?? session.startedAt
+    }
+
+    private var durationText: String {
+        let seconds: Int
+        if let durationSeconds = session.durationSeconds {
+            seconds = durationSeconds
+        } else if let endedAt = session.endedAt {
+            seconds = Int(endedAt.timeIntervalSince(session.startedAt))
+        } else {
+            seconds = 0
+        }
+        return formattedDuration(max(0, seconds))
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(session.workout.title)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    Text(SessionDateFormatter.shared.string(from: completedDate))
+                        .foregroundStyle(.secondary)
+                }
+
+                HighlightCard(
+                    title: "Session Duration",
+                    subtitle: durationText,
+                    detail: "Total time captured"
+                )
+
+                if let notes = session.notes, !notes.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Notes")
+                            .font(.headline)
+                        Text(notes)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Exercise Progress")
+                        .font(.headline)
+
+                    if session.logEntries.isEmpty {
+                        Text("No exercise notes or sets recorded yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(session.logEntries) { entry in
+                            ExerciseProgressCard(entry: entry)
+                        }
+                    }
+                }
+            }
+            .padding()
+        }
+        .navigationTitle("Session Detail")
+    }
+}
+
+struct ExerciseProgressCard: View {
+    let entry: ExerciseLog
+
+    private var summaryText: String {
+        let sets = entry.sets.count
+        let totalReps = entry.sets.compactMap { $0.reps }.reduce(0, +)
+        let volume = volumeSummary(entry.sets)
+        var components: [String] = []
+        components.append("\(sets) sets")
+        if totalReps > 0 {
+            components.append("\(totalReps) reps")
+        }
+        if let volume {
+            components.append(volume)
+        }
+        return components.joined(separator: " · ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(entry.exerciseName)
+                .fontWeight(.semibold)
+            Text(summaryText)
+                .foregroundStyle(.secondary)
+            if let notes = entry.notes, !notes.isEmpty {
+                Text(notes)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(12)
+    }
+
+    private func volumeSummary(_ sets: [ExerciseSet]) -> String? {
+        let grouped = Dictionary(grouping: sets.compactMap { set -> (WeightUnit, Double)? in
+            guard let weight = set.weight, let unit = set.weightUnit, let reps = set.reps else {
+                return nil
+            }
+            return (unit, weight * Double(reps))
+        }) { $0.0 }
+
+        let parts = grouped.map { unit, values -> String in
+            let total = values.map { $0.1 }.reduce(0, +)
+            let formatted = String(format: "%.0f", total)
+            let label = unit == .pounds ? "lb" : "kg"
+            return "\(formatted) \(label)"
+        }
+
+        return parts.sorted().joined(separator: " · ").isEmpty ? nil : parts.sorted().joined(separator: " · ")
     }
 }
 
@@ -863,7 +1059,7 @@ struct FilterChip: View {
     }
 }
 
-struct MockStat: View {
+struct HistoryStat: View {
     let title: String
     let subtitle: String
 
@@ -902,16 +1098,24 @@ struct LogRowMock: View {
     }
 }
 
-struct MockSession: Identifiable {
-    let id = UUID()
-    let title: String
-    let detail: String
+final class SessionDateFormatter {
+    static let shared: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+}
 
-    static let sample: [MockSession] = [
-        MockSession(title: "Hinge + Push", detail: "Today - 36 min"),
-        MockSession(title: "Mobility Only", detail: "Yesterday - 22 min"),
-        MockSession(title: "Squat + Pull", detail: "2 days ago - 41 min")
-    ]
+private func formattedDuration(_ totalSeconds: Int) -> String {
+    let hours = totalSeconds / 3600
+    let minutes = (totalSeconds % 3600) / 60
+    let seconds = totalSeconds % 60
+
+    if hours > 0 {
+        return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+    }
+    return String(format: "%02d:%02d", minutes, seconds)
 }
 
 #Preview {

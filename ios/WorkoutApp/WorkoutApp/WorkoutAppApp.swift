@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct WorkoutAppApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var preferencesStore: UserPreferencesStore
     @StateObject private var workoutSessionStore: WorkoutSessionStore
     @StateObject private var sessionStateStore: SessionStateStore
@@ -19,6 +20,11 @@ struct WorkoutAppApp: App {
                 .environmentObject(preferencesStore)
                 .environmentObject(workoutSessionStore)
                 .environmentObject(sessionStateStore)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background || newPhase == .inactive {
+                sessionStateStore.persistDraftIfNeeded()
+            }
         }
     }
 }
