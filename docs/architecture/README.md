@@ -45,6 +45,15 @@ This document uses TOGAF domains as the organizing structure and C4-style decomp
 - **External Source Importer:** fetch, parse, cache, provenance.
 - **LLM Orchestrator (optional):** prompt shaping, privacy gating, response normalization.
 
+### Discovery-LLM Interaction Contract
+- Rules-based recommendation ranking is the primary path and always computed locally.
+- LLM orchestration is optional and only used for free-form generation/regeneration requests.
+- Generated workouts are treated as explicit candidates (`WorkoutSource.generated`), not hidden
+  score adjustments on rules-ranked workouts.
+- LLM prompt assembly is policy-gated by user settings (enabled state, credentials, and per-category
+  sharing toggles).
+- Discovery UI must label candidate origin (rules vs generated) and explanation source.
+
 ### Execution Engine Notes
 - `ExecutionTimer` derives `ExecutionTimerSnapshot` values from a `TimerConfiguration` using timestamps for
   start/pause/resume/stop, so UI can refresh using `snapshot(at:)` and recover after backgrounding.
@@ -123,6 +132,8 @@ This document uses TOGAF domains as the organizing structure and C4-style decomp
 - Session logs -> history -> recommendation engine inputs.
 - Preferences -> discovery ranking and filtering.
 - Optional external sources/LLM -> discovery -> template/variant creation.
+- Recommendation reasons come from deterministic ranking for rules candidates and from prompt-fit
+  rationale for generated candidates.
 
 ### Storage Boundaries
 - **Persisted:** workout definitions (base + templates/variants), sessions, preferences, recommendation inputs, external imports.
@@ -156,5 +167,5 @@ This document uses TOGAF domains as the organizing structure and C4-style decomp
 
 ## Open Decisions
 - Final persistence technology choice and schema design.
-- LLM provider selection and prompt scope defaults.
+- LLM provider defaults beyond initial OpenAI support.
 - Parsing fidelity targets for Markdown workouts.

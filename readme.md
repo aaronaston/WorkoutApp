@@ -88,6 +88,8 @@ xcrun simctl launch "$UDID" com.example.WorkoutApp
 **Data/logic:**
 - Use a simple rules engine (initially) based on last N days of history and user preferences.
 - Recommendation behavior should be explainable and tunable via simple weights/knobs (not a black box).
+- Rules-based ranking remains primary; LLM generation is an optional adjunct path and must not
+  silently override deterministic ranking.
 - If the user customizes a suggested workout, create a user-specific variant derived from the base workout.
 
 **Free-form discovery (workout generation):**
@@ -240,8 +242,9 @@ xcrun simctl launch "$UDID" com.example.WorkoutApp
 7) Calendar-to-LLM sharing: controlled by an explicit user setting.
 8) LLM sharing defaults: share enabled by default; allow opting out globally or by category.
 9) LLM prompt scope: calendar context, history, exercise logs, notes, and future soreness/injury inputs are all eligible by default, with per-category opt-out.
+10) Discovery contract: deterministic rules-based ranking is always available locally; LLM is only
+    for optional generation/regeneration and yields explicit generated candidates.
 
 ## Open Questions
 1) Default LLM detail level: send “summaries” where possible, or send full raw logs by default?
-2) Category list: confirm the initial set of LLM share toggles (calendar, history summaries, exercise logs, notes) and whether “workout templates/variants” should be included too.
-3) Redaction: should there be a user-editable “always redact” list (names/places) applied before sending calendar titles/notes to the LLM?
+2) Redaction: should there be a user-editable “always redact” list (names/places) applied before sending calendar titles/notes to the LLM?
