@@ -51,6 +51,7 @@ struct DiscoveryPreferences: Codable, Hashable {
     var includeExternalSources: Bool
     var excludedTags: [String]
     var minimumRestDaysByCategory: [String: Int]
+    var recommendationWeights: RecommendationWeights
 
     init(
         targetDuration: PreferredDuration? = nil,
@@ -60,7 +61,8 @@ struct DiscoveryPreferences: Codable, Hashable {
         includeTemplates: Bool = true,
         includeExternalSources: Bool = false,
         excludedTags: [String] = [],
-        minimumRestDaysByCategory: [String: Int] = [:]
+        minimumRestDaysByCategory: [String: Int] = [:],
+        recommendationWeights: RecommendationWeights = RecommendationWeights()
     ) {
         self.targetDuration = targetDuration
         self.location = location
@@ -70,6 +72,32 @@ struct DiscoveryPreferences: Codable, Hashable {
         self.includeExternalSources = includeExternalSources
         self.excludedTags = excludedTags
         self.minimumRestDaysByCategory = minimumRestDaysByCategory
+        self.recommendationWeights = recommendationWeights
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case targetDuration
+        case location
+        case equipmentTags
+        case focusTags
+        case includeTemplates
+        case includeExternalSources
+        case excludedTags
+        case minimumRestDaysByCategory
+        case recommendationWeights
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        targetDuration = try container.decodeIfPresent(PreferredDuration.self, forKey: .targetDuration)
+        location = try container.decodeIfPresent(WorkoutLocationPreference.self, forKey: .location)
+        equipmentTags = try container.decodeIfPresent([String].self, forKey: .equipmentTags) ?? []
+        focusTags = try container.decodeIfPresent([String].self, forKey: .focusTags) ?? []
+        includeTemplates = try container.decodeIfPresent(Bool.self, forKey: .includeTemplates) ?? true
+        includeExternalSources = try container.decodeIfPresent(Bool.self, forKey: .includeExternalSources) ?? false
+        excludedTags = try container.decodeIfPresent([String].self, forKey: .excludedTags) ?? []
+        minimumRestDaysByCategory = try container.decodeIfPresent([String: Int].self, forKey: .minimumRestDaysByCategory) ?? [:]
+        recommendationWeights = try container.decodeIfPresent(RecommendationWeights.self, forKey: .recommendationWeights) ?? RecommendationWeights()
     }
 }
 

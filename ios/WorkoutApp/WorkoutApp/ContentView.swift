@@ -57,6 +57,8 @@ private enum DurationFilter: String, CaseIterable, Identifiable {
 }
 
 struct DiscoveryView: View {
+    @EnvironmentObject private var preferencesStore: UserPreferencesStore
+    @EnvironmentObject private var sessionStore: WorkoutSessionStore
     @Binding var selectedTab: AppTab
     @State private var workouts: [WorkoutDefinition] = []
     @State private var loadError: String?
@@ -71,17 +73,30 @@ struct DiscoveryView: View {
 
     private let equipmentFilterOptions = ["Bodyweight", "Dumbbell", "Barbell", "Band", "Kettlebell"]
     private let locationFilterOptions = ["Home", "Gym", "Away"]
+    private let recommendationEngine = WorkoutRecommendationEngine()
+
+    private var recommendationsByWorkoutID: [WorkoutID: RankedWorkout] {
+        Dictionary(uniqueKeysWithValues: rankedWorkouts.map { ($0.workout.id, $0) })
+    }
+
+    private var rankedWorkouts: [RankedWorkout] {
+        recommendationEngine.rank(
+            workouts: workouts,
+            history: sessionStore.sessions,
+            preferences: preferencesStore.preferences.discovery
+        )
+    }
+
+    private var filteredRecommendations: [RankedWorkout] {
+        rankedWorkouts.filter { workoutMatchesFilters($0.workout) }
+    }
 
     private var highlightedWorkout: WorkoutDefinition? {
-        filteredWorkouts.first
+        filteredRecommendations.first?.workout
     }
 
     private var hasActiveFilters: Bool {
         !selectedEquipment.isEmpty || !selectedLocations.isEmpty || !selectedDurations.isEmpty
-    }
-
-    private var filteredWorkouts: [WorkoutDefinition] {
-        workouts.filter { workoutMatchesFilters($0) }
     }
 
     private var filteredSearchResults: [WorkoutSearchResult] {
@@ -124,16 +139,20 @@ struct DiscoveryView: View {
                         } else {
                             ForEach(filteredSearchResults) { result in
                                 NavigationLink {
-                                    WorkoutDetailView(workout: result.workout, selectedTab: $selectedTab)
+                                    WorkoutDetailView(
+                                        workout: result.workout,
+                                        recommendation: recommendationsByWorkoutID[result.workout.id],
+                                        selectedTab: $selectedTab
+                                    )
                                 } label: {
-                                    WorkoutRow(workout: result.workout)
+                                    WorkoutRow(workout: result.workout, recommendation: recommendationsByWorkoutID[result.workout.id])
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
                     }
                 } else {
-                    if filteredWorkouts.isEmpty {
+                    if filteredRecommendations.isEmpty {
                         Text(hasActiveFilters ? "No workouts match those filters." : "No workouts available.")
                             .foregroundStyle(.secondary)
                     } else {
@@ -143,12 +162,16 @@ struct DiscoveryView: View {
                                     .font(.headline)
 
                                 NavigationLink {
-                                    WorkoutDetailView(workout: highlightedWorkout, selectedTab: $selectedTab)
+                                    WorkoutDetailView(
+                                        workout: highlightedWorkout,
+                                        recommendation: recommendationsByWorkoutID[highlightedWorkout.id],
+                                        selectedTab: $selectedTab
+                                    )
                                 } label: {
                                     HighlightCard(
                                         title: highlightedWorkout.title,
                                         subtitle: sectionSummary(for: highlightedWorkout),
-                                        detail: "Loaded from the knowledge base"
+                                        detail: recommendationsByWorkoutID[highlightedWorkout.id]?.primaryReason ?? "Loaded from the knowledge base"
                                     )
                                 }
                                 .buttonStyle(.plain)
@@ -159,11 +182,15 @@ struct DiscoveryView: View {
                             Text("Recommended")
                                 .font(.headline)
 
-                            ForEach(filteredWorkouts) { workout in
+                            ForEach(filteredRecommendations) { rankedWorkout in
                                 NavigationLink {
-                                    WorkoutDetailView(workout: workout, selectedTab: $selectedTab)
+                                    WorkoutDetailView(
+                                        workout: rankedWorkout.workout,
+                                        recommendation: rankedWorkout,
+                                        selectedTab: $selectedTab
+                                    )
                                 } label: {
-                                    WorkoutRow(workout: workout)
+                                    WorkoutRow(workout: rankedWorkout.workout, recommendation: rankedWorkout)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -442,6 +469,7 @@ struct DiscoveryView: View {
 struct WorkoutDetailView: View {
     @EnvironmentObject private var sessionState: SessionStateStore
     let workout: WorkoutDefinition
+    let recommendation: RankedWorkout?
     @Binding var selectedTab: AppTab
 
     private var sectionCount: Int {
@@ -475,8 +503,8 @@ struct WorkoutDetailView: View {
 
                 HighlightCard(
                     title: "Why this workout?",
-                    subtitle: "Structured from the knowledge base",
-                    detail: "Sections parsed from the original Markdown"
+                    subtitle: recommendation?.primaryReason ?? "Structured from the knowledge base",
+                    detail: recommendation?.reasons.prefix(2).map(\.text).joined(separator: " • ") ?? "Sections parsed from the original Markdown"
                 )
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -968,6 +996,30 @@ struct SettingsMockView: View {
                 NavigationLink("Equipment Availability") {}
                 NavigationLink("Workout Duration") {}
                 NavigationLink("Focus Areas") {}
+
+                Stepper(
+                    value: $preferencesStore.preferences.discovery.recommendationWeights.repeatPenalty,
+                    in: 0...3,
+                    step: 0.1
+                ) {
+                    Text("Repeat Penalty: \(preferencesStore.preferences.discovery.recommendationWeights.repeatPenalty, specifier: "%.1f")")
+                }
+
+                Stepper(
+                    value: $preferencesStore.preferences.discovery.recommendationWeights.noveltyBoost,
+                    in: 0...3,
+                    step: 0.1
+                ) {
+                    Text("Balance Boost: \(preferencesStore.preferences.discovery.recommendationWeights.noveltyBoost, specifier: "%.1f")")
+                }
+
+                Stepper(
+                    value: $preferencesStore.preferences.discovery.recommendationWeights.focusPreferenceBoost,
+                    in: 0...3,
+                    step: 0.1
+                ) {
+                    Text("Focus Match Boost: \(preferencesStore.preferences.discovery.recommendationWeights.focusPreferenceBoost, specifier: "%.1f")")
+                }
             }
 
             Section(header: Text("Account")) {
@@ -1031,6 +1083,7 @@ struct SearchField: View {
 
 struct WorkoutRow: View {
     let workout: WorkoutDefinition
+    let recommendation: RankedWorkout?
 
     private var sectionTitles: [String] {
         workout.content.parsedSections?.prefix(2).map { $0.title } ?? []
@@ -1056,14 +1109,39 @@ struct WorkoutRow: View {
             Text(sectionSummary)
                 .foregroundStyle(.secondary)
 
+            if let recommendation {
+                Text(recommendation.primaryReason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
             HStack(spacing: 8) {
                 MockChip(title: "\(sectionCount) sections")
-                MockChip(title: "Knowledge base")
+                MockChip(title: sourceLabel(for: workout.source))
+                if let recommendation {
+                    MockChip(title: "Score \(String(format: "%.2f", recommendation.score))")
+                }
             }
         }
         .padding()
         .background(Color(.secondarySystemBackground))
         .cornerRadius(12)
+    }
+
+    private func sourceLabel(for source: WorkoutSource) -> String {
+        switch source {
+        case .knowledgeBase:
+            return "Knowledge base"
+        case .template:
+            return "Template"
+        case .variant:
+            return "Variant"
+        case .external:
+            return "External"
+        case .generated:
+            return "Generated"
+        }
     }
 }
 
