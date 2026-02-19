@@ -71,6 +71,13 @@ git push
 bd merge-slot release --holder "$BD_ACTOR"
 ```
 
+### Current status (2026-02-19): merge-slot acquire/release bug
+- `bd merge-slot acquire` currently fails in this repo with:
+  `failed to update issue: invalid field for update: holder`
+- Until fixed, do **not** rely on `bd merge-slot acquire/release`.
+- Fallback: serialize merges manually (one integrator at a time) using the local integration steps below.
+- Coordination rule: before integrating, confirm no other agent is actively integrating to `main`.
+
 **Local integration to main (no PR, same machine):**
 
 From agent worktree (your feature branch):
@@ -78,7 +85,7 @@ From agent worktree (your feature branch):
 ```bash
 source .bd-env
 bd merge-slot check
-bd merge-slot acquire --holder "$BD_ACTOR"
+# merge-slot acquire is currently broken; coordinate manually, one integrator at a time
 git pull --rebase origin main
 ```
 
@@ -96,7 +103,7 @@ git push origin main
 Then back in the agent worktree:
 
 ```bash
-bd merge-slot release --holder "$BD_ACTOR"
+# merge-slot release is currently broken; announce integration complete to other agents
 ```
 
 **Command context (where to run what):**
@@ -110,6 +117,7 @@ Assumptions:
    - CWD: agent worktree (e.g. .worktrees/agent-a)
    - Branch: agent-a/<issue>
    - DB: uses BEADS_DB from .bd-env (shared main repo DB)
+   - NOTE: acquire/release currently fail with holder-field error; use manual serialization.
 
 2) git pull --rebase origin main
    - CWD: agent worktree
