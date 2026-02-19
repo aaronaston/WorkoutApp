@@ -96,6 +96,11 @@ xcrun simctl launch "$UDID" com.example.WorkoutApp
 - Accept a user prompt describing intent, constraints, and target intensity (e.g., “~60% effort”), and generate a workout suggestion.
 - Generated workouts are expressed as a concrete workout plan (sections + exercises + prescriptions) with an Rx version.
 - The generated plan must state why it matches the prompt and how it respects recent history (e.g., avoids repeated stress).
+- Prompt context supports:
+  - summary mode (aggregated context)
+  - raw mode (detailed source context)
+  - augmented mode (default): preserve user intent, then enrich with deterministic clarifications and
+    structured context from preferences/history/current condition.
 - Intensity targeting requires a user calibration model (initially simple), such as:
   - per-movement working weights or recent logged performance
   - RPE/RIR targets and time-domain constraints
@@ -244,7 +249,13 @@ xcrun simctl launch "$UDID" com.example.WorkoutApp
 9) LLM prompt scope: calendar context, history, exercise logs, notes, and future soreness/injury inputs are all eligible by default, with per-category opt-out.
 10) Discovery contract: deterministic rules-based ranking is always available locally; LLM is only
     for optional generation/regeneration and yields explicit generated candidates.
+11) Default LLM prompt mode is augmented; context may be enriched from user preferences, prior
+    performance trends, and current condition when available.
+12) No extra "confirm what will be shared" interstitial is required before each LLM request.
+13) Best-effort deterministic identifier scrubbing is applied before LLM calls for obvious direct
+    identifiers (emails, phone numbers, long numeric IDs, likely addresses, person-name headers).
+14) `shareTemplatesAndVariants` means sharing local templates/variants as LLM context only (not
+    sharing data with other users), and defaults to enabled.
 
 ## Open Questions
-1) Default LLM detail level: send “summaries” where possible, or send full raw logs by default?
-2) Redaction: should there be a user-editable “always redact” list (names/places) applied before sending calendar titles/notes to the LLM?
+1) Redaction controls: should there be an optional user-editable "always redact" list in addition to deterministic scrubbing?

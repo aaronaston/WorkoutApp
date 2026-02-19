@@ -52,6 +52,8 @@ This document uses TOGAF domains as the organizing structure and C4-style decomp
   score adjustments on rules-ranked workouts.
 - LLM prompt assembly is policy-gated by user settings (enabled state, credentials, and per-category
   sharing toggles).
+- LLM prompt assembly supports `summary`, `raw`, and `augmented` modes; `augmented` keeps user
+  intent while enriching prompt context from preferences/history/current condition.
 - Discovery UI must label candidate origin (rules vs generated) and explanation source.
 
 ### Execution Engine Notes
