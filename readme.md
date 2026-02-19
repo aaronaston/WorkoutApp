@@ -110,6 +110,11 @@ xcrun simctl launch "$UDID" com.example.WorkoutApp
   - select model/provider when multiple are supported (future)
   - store credentials securely (iOS Keychain)
 - If the LLM is not configured or network is unavailable, the app should degrade gracefully (e.g., prompt to configure, or offer non-LLM discovery paths).
+- LLM generation flow should use a bounded refinement loop:
+  - generate initial plan from augmented prompt
+  - retrieve relevant templates/rules/preferences conditionally
+  - refine plan using only relevant retrieved context
+  - deterministically validate hard constraints, with at most one repair attempt
 
 **Privacy/permissions (discovery):**
 - Calendar integration is optional; the user can disable it at any time.
@@ -256,6 +261,7 @@ xcrun simctl launch "$UDID" com.example.WorkoutApp
     identifiers (emails, phone numbers, long numeric IDs, likely addresses, person-name headers).
 14) `shareTemplatesAndVariants` means sharing local templates/variants as LLM context only (not
     sharing data with other users), and defaults to enabled.
+15) Use function-calling/structured-output contracts for generation, retrieval, refinement, and validation steps.
 
 ## Open Questions
 1) Redaction controls: should there be an optional user-editable "always redact" list in addition to deterministic scrubbing?

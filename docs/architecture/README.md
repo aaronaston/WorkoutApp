@@ -54,6 +54,8 @@ This document uses TOGAF domains as the organizing structure and C4-style decomp
   sharing toggles).
 - LLM prompt assembly supports `summary`, `raw`, and `augmented` modes; `augmented` keeps user
   intent while enriching prompt context from preferences/history/current condition.
+- LLM generation uses a bounded two-round loop: initial generation, relevant-context retrieval,
+  refinement, then deterministic validation with at most one repair attempt.
 - Discovery UI must label candidate origin (rules vs generated) and explanation source.
 
 ### Execution Engine Notes

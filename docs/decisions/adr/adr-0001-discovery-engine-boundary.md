@@ -25,6 +25,13 @@ more context than intended.
 5) Discovery surfaces must label origin and rationale:
    - Rules-ranked items show rules-based recommendation reasons.
    - Generated items show prompt-fit rationale + policy-constrained context summary.
+6) Generation uses a bounded refinement loop (max two LLM rounds):
+   - Round 1: generate candidate from augmented prompt.
+   - Retrieval: select relevant templates/rules via deterministic prefilter + similarity search.
+   - Round 2: refine candidate using only retrieved relevant context.
+   - Validate deterministically against hard rules; allow at most one repair retry.
+7) LLM interactions use structured function-calling/JSON schema contracts so retrieval and
+   validation stay deterministic and auditable.
 
 ## Alternatives
 - Option A: Let LLM directly re-rank all discovery results
@@ -39,6 +46,8 @@ more context than intended.
 - `wa-pac` owns credential/config state and prompt data-sharing policy.
 - Integration point requires a typed prompt-context contract with per-category filtering.
 - Testing must cover policy gating, disabled/offline degradation, and origin labeling.
+- LLM orchestration adds deterministic retrieve/validate components and loop-stop conditions.
+- Explainability must include refinement provenance (which constraints/templates influenced final output).
 
 ## References
 - `readme.md`

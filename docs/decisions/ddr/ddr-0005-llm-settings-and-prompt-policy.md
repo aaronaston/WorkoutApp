@@ -49,6 +49,24 @@ Runtime policy rules:
   while acknowledging this is not guaranteed PII removal.
 - `shareTemplatesAndVariants` controls whether the app includes the user's local templates/variants
   as prompt context for LLM generation; it does not mean sharing workouts with other users.
+- Template/variant context should be retrieved conditionally for relevance, not eagerly attached to
+  every prompt.
+
+Bounded orchestration flow:
+1) Build augmented prompt from user intent + allowed context.
+2) LLM `generate_workout` function call returns structured workout plan candidate.
+3) Deterministic retrieval (`retrieve_context`) finds relevant templates/rules/preferences using:
+   - metadata/rule prefilter (equipment, duration, location, injury flags, etc.)
+   - similarity scoring (vector/semantic) on prefiltered candidates.
+4) LLM `refine_workout` function call receives candidate + retrieved context only.
+5) Deterministic validation (`validate_workout`) enforces hard constraints; one repair attempt max.
+6) Final output includes machine-readable provenance for explanation UI.
+
+Function-calling contract (initial):
+- `generate_workout(input) -> WorkoutPlanDraft`
+- `retrieve_context(input, candidate) -> RetrievedContext[]`
+- `refine_workout(candidate, context) -> WorkoutPlanDraft`
+- `validate_workout(candidate, hardRules) -> ValidationResult`
 
 ## Alternatives
 - Option A: Single "share all" toggle with no category controls
@@ -57,6 +75,12 @@ Runtime policy rules:
 - Option B: Category toggles + detail level including augmented mode (chosen)
   - Pros: explicit data policy, clearer user control, easy policy testing
   - Cons: larger settings surface and more validation states
+- Option C: Single-pass generation with all templates attached
+  - Pros: simplest prompt assembly
+  - Cons: token-heavy, noisier prompts, weaker relevance control
+- Option D: Bounded two-round generation with conditional retrieval (chosen)
+  - Pros: higher relevance, lower token waste, deterministic guardrails
+  - Cons: more orchestration and test surface
 
 ## Consequences
 - Extend preferences domain with a dedicated LLM settings structure.
@@ -67,6 +91,8 @@ Runtime policy rules:
 - Recommendation engine remains independent of LLM settings except for deciding whether generated
   candidates are available.
 - Default `shareTemplatesAndVariants` to enabled.
+- Add retrieval index + hard-rule validator modules for orchestration steps.
+- Add loop guardrails (`maxRounds=2`, `maxRepairAttempts=1`) and provenance logging.
 
 ## References
 - `readme.md`
