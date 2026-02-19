@@ -1,4 +1,3 @@
-import MarkdownUI
 import Network
 import SwiftUI
 
@@ -484,10 +483,9 @@ struct WorkoutDetailView: View {
                     Text("Overview")
                         .font(.headline)
 
-                    Markdown(overviewMarkdown)
-                        .markdownTextStyle(\.text) {
-                            FontSize(.em(0.95))
-                        }
+                    Text(overviewMarkdown)
+                        .font(.system(.body, design: .default))
+                        .textSelection(.enabled)
                         .padding()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color(.secondarySystemBackground))
