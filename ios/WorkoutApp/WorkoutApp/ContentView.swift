@@ -1,4 +1,5 @@
 import MarkdownUI
+import Network
 import SwiftUI
 
 enum AppTab: Hashable {
@@ -847,12 +848,122 @@ struct ExerciseProgressCard: View {
 
 struct SettingsMockView: View {
     @EnvironmentObject private var preferencesStore: UserPreferencesStore
+    @StateObject private var networkMonitor = NetworkStatusMonitor()
+    @State private var apiKeyInput = ""
+    @State private var keySaveMessage: String?
+
+    private var llmRuntimeState: LLMRuntimeState {
+        preferencesStore.llmRuntimeState(isNetworkAvailable: networkMonitor.isNetworkAvailable)
+    }
+
+    private var llmStatusText: String {
+        switch llmRuntimeState {
+        case .disabled:
+            return "Disabled"
+        case .missingAPIKey:
+            return "Missing API key"
+        case .offline:
+            return "Offline"
+        case .ready:
+            return "Ready"
+        }
+    }
+
+    private var llmStatusColor: Color {
+        switch llmRuntimeState {
+        case .ready:
+            return .green
+        case .disabled:
+            return .secondary
+        case .missingAPIKey, .offline:
+            return .orange
+        }
+    }
 
     var body: some View {
         Form {
             Section(header: Text("Preferences")) {
                 Toggle("Calendar Sync", isOn: $preferencesStore.preferences.calendarSyncEnabled)
                 Toggle("HealthKit Sync", isOn: $preferencesStore.preferences.healthKitSyncEnabled)
+            }
+
+            Section(header: Text("LLM")) {
+                Toggle("Enable LLM Assistance", isOn: $preferencesStore.preferences.llm.enabled)
+
+                HStack {
+                    Text("Provider")
+                    Spacer()
+                    Picker("Provider", selection: $preferencesStore.preferences.llm.provider) {
+                        ForEach(LLMProvider.allCases) { provider in
+                            Text(provider.displayName).tag(provider)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                TextField("Model ID", text: $preferencesStore.preferences.llm.modelID)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+
+                Picker("Prompt Mode", selection: $preferencesStore.preferences.llm.promptDetailLevel) {
+                    ForEach(LLMPromptDetailLevel.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+
+                SecureField("API Key", text: $apiKeyInput)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+
+                HStack {
+                    Button("Save API Key") {
+                        if preferencesStore.saveLLMAPIKey(apiKeyInput) {
+                            apiKeyInput = ""
+                            keySaveMessage = "API key saved in Keychain."
+                        } else {
+                            keySaveMessage = "Unable to save API key."
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    if preferencesStore.hasLLMAPIKey {
+                        Button("Remove Key", role: .destructive) {
+                            preferencesStore.clearLLMAPIKey()
+                            keySaveMessage = "API key removed."
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+                if let keySaveMessage {
+                    Text(keySaveMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Label(llmStatusText, systemImage: "bolt.horizontal.circle")
+                    .foregroundStyle(llmStatusColor)
+
+                if llmRuntimeState == .offline {
+                    Text("Free-form generation is unavailable while offline. Rules/search discovery remains available.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if llmRuntimeState == .missingAPIKey {
+                    Text("Add an API key to enable free-form generation.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section(header: Text("LLM Sharing")) {
+                Toggle("Calendar Context", isOn: $preferencesStore.preferences.llm.shareCalendarContext)
+                Toggle("History Summaries", isOn: $preferencesStore.preferences.llm.shareHistorySummaries)
+                Toggle("Exercise Logs", isOn: $preferencesStore.preferences.llm.shareExerciseLogs)
+                Toggle("User Notes", isOn: $preferencesStore.preferences.llm.shareUserNotes)
+                Toggle("Templates & Variants", isOn: $preferencesStore.preferences.llm.shareTemplatesAndVariants)
+                Text("Templates & Variants only controls local context sent to the LLM. It does not share workouts with other users.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section(header: Text("Discovery")) {
@@ -867,6 +978,28 @@ struct SettingsMockView: View {
             }
         }
         .navigationTitle("Settings")
+    }
+}
+
+@MainActor
+final class NetworkStatusMonitor: ObservableObject {
+    @Published private(set) var isNetworkAvailable: Bool = true
+
+    private let monitor: NWPathMonitor
+    private let queue = DispatchQueue(label: "com.workoutapp.network-monitor")
+
+    init(monitor: NWPathMonitor = NWPathMonitor()) {
+        self.monitor = monitor
+        monitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in
+                self?.isNetworkAvailable = path.status == .satisfied
+            }
+        }
+        monitor.start(queue: queue)
+    }
+
+    deinit {
+        monitor.cancel()
     }
 }
 
