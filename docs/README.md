@@ -5,6 +5,7 @@ This folder contains architecture and decision documentation.
 ## Structure
 - architecture/ : system architecture references and artifacts
 - decisions/ : architecture and design decisions (ADRs, DDRs, registries)
+- features/ : feature-level requirements and technical design docs
 
 ## Architecture Approach
 
