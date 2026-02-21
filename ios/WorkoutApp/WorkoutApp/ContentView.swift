@@ -1,4 +1,5 @@
 import Network
+import Markdown
 import SwiftUI
 
 enum AppTab: Hashable {
@@ -484,6 +485,67 @@ struct WorkoutDetailView: View {
         WorkoutMarkdownParser().strippedMarkdown(from: workout.content.sourceMarkdown)
     }
 
+    private enum OverviewBlock: Identifiable {
+        case heading(level: Int, text: String)
+        case paragraph(String)
+        case bullet(String)
+
+        var id: String {
+            switch self {
+            case .heading(let level, let text):
+                return "h\(level):\(text)"
+            case .paragraph(let text):
+                return "p:\(text)"
+            case .bullet(let text):
+                return "b:\(text)"
+            }
+        }
+    }
+
+    private var overviewBlocks: [OverviewBlock] {
+        let document = Document(parsing: overviewMarkdown)
+        var blocks: [OverviewBlock] = []
+
+        func listItemText(_ listItem: ListItem) -> String? {
+            for child in listItem.children {
+                if let paragraph = child as? Paragraph {
+                    let text = paragraph.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return text.isEmpty ? nil : text
+                }
+            }
+            return nil
+        }
+
+        for child in document.children {
+            if let heading = child as? Heading {
+                let text = heading.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty {
+                    blocks.append(.heading(level: heading.level, text: text))
+                }
+                continue
+            }
+
+            if let paragraph = child as? Paragraph {
+                let text = paragraph.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty {
+                    blocks.append(.paragraph(text))
+                }
+                continue
+            }
+
+            if let list = child as? ListItemContainer {
+                for listItem in list.listItems {
+                    guard let text = listItemText(listItem) else {
+                        continue
+                    }
+                    blocks.append(.bullet(text))
+                }
+            }
+        }
+
+        return blocks
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -511,13 +573,36 @@ struct WorkoutDetailView: View {
                     Text("Overview")
                         .font(.headline)
 
-                    Text(overviewMarkdown)
-                        .font(.system(.body, design: .default))
-                        .textSelection(.enabled)
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(.secondarySystemBackground))
-                        .cornerRadius(12)
+                    Group {
+                        if overviewBlocks.isEmpty {
+                            Text(overviewMarkdown)
+                                .font(.system(.body, design: .default))
+                        } else {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(overviewBlocks) { block in
+                                    switch block {
+                                    case .heading(let level, let text):
+                                        Text(text)
+                                            .font(level == 1 ? .title3.weight(.semibold) : .headline)
+                                    case .paragraph(let text):
+                                        Text(text)
+                                            .font(.system(.body, design: .default))
+                                    case .bullet(let text):
+                                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                            Text("•")
+                                            Text(text)
+                                        }
+                                        .font(.system(.body, design: .default))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .textSelection(.enabled)
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(12)
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
