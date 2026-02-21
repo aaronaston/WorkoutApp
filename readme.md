@@ -58,7 +58,7 @@ open -a Simulator
 
 xcodebuild -project ios/WorkoutApp/WorkoutApp.xcodeproj -scheme WorkoutApp -sdk iphonesimulator -configuration Debug -derivedDataPath /tmp/WorkoutAppDerived
 xcrun simctl install "$UDID" /tmp/WorkoutAppDerived/Build/Products/Debug-iphonesimulator/WorkoutApp.app
-xcrun simctl launch "$UDID" com.example.WorkoutApp
+xcrun simctl launch "$UDID" ca.twisted-pair.WorkoutApp
 ```
 
 ### 1) Workout Discovery (Primary Screen)

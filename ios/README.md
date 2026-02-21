@@ -2,6 +2,24 @@
 
 Open `ios/WorkoutApp/WorkoutApp.xcodeproj` in Xcode to run the app.
 
+## Physical iPhone Setup
+
+For this project (current branch), signing for a physical iPhone is blocked until a development team is selected in Xcode.
+
+1. Connect your iPhone and trust this Mac on the device.
+2. Open `ios/WorkoutApp/WorkoutApp.xcodeproj` in Xcode.
+3. Select target `WorkoutApp` -> Signing & Capabilities.
+4. Set:
+   - Team: your Apple Developer team
+   - Signing Certificate: `Apple Development`
+   - Bundle Identifier: `ca.twisted-pair.WorkoutApp`
+5. If prompted, let Xcode manage the provisioning profile automatically.
+6. Select your iPhone as run destination and press Run.
+
+Notes:
+- The test target bundle ID is `ca.twisted-pair.WorkoutAppTests`.
+- This repo currently has iOS app + tests targets only; no watchOS target is present in the Xcode project.
+
 ## Troubleshooting
 
 ### xcodebuild warning: `DVTDeviceOperation` build number `""`
