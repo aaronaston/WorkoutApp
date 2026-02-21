@@ -46,6 +46,7 @@ struct ContentView: View {
             }
             .tag(AppTab.settings)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

@@ -296,4 +296,10 @@ final class WorkoutAppInfoPlistTests: XCTestCase {
         XCTAssertTrue(values.contains(1))
         XCTAssertTrue(values.contains(2))
     }
+
+    func testSceneManifestIsNotOverridden() {
+        let sceneManifest = Bundle.main.object(forInfoDictionaryKey: "UIApplicationSceneManifest")
+
+        XCTAssertNil(sceneManifest)
+    }
 }
