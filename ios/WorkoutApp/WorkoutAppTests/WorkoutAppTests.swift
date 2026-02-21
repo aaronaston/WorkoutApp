@@ -302,4 +302,10 @@ final class WorkoutAppInfoPlistTests: XCTestCase {
 
         XCTAssertNil(sceneManifest)
     }
+
+    func testLaunchScreenIsConfigured() {
+        let launchScreen = Bundle.main.object(forInfoDictionaryKey: "UILaunchScreen") as? [String: Any]
+
+        XCTAssertNotNil(launchScreen)
+    }
 }
