@@ -69,6 +69,7 @@ struct DiscoveryView: View {
     @State private var searchResults: [WorkoutSearchResult] = []
     @State private var searchIndex: WorkoutSearchIndex?
     @State private var searchTask: Task<Void, Never>?
+    @State private var isLoadingWorkouts = false
     @State private var selectedEquipment: Set<String> = []
     @State private var selectedLocations: Set<String> = []
     @State private var selectedDurations: Set<DurationFilter> = []
@@ -118,6 +119,16 @@ struct DiscoveryView: View {
                 }
 
                 SearchField(text: $searchQuery, placeholder: "Search workouts, equipment, or goals")
+
+                if isLoadingWorkouts, !workouts.isEmpty {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading more workouts...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
                 if let loadError {
                     VStack(alignment: .leading, spacing: 6) {
@@ -300,17 +311,30 @@ struct DiscoveryView: View {
         }
 
         hasLoaded = true
+        loadError = nil
+        isLoadingWorkouts = true
+        workouts = []
+        searchIndex = WorkoutSearchIndex(workouts: [])
         Task.detached(priority: .userInitiated) {
             do {
-                let loadedWorkouts = try KnowledgeBaseLoader().loadWorkouts()
-                let index = WorkoutSearchIndex(workouts: loadedWorkouts)
+                try await KnowledgeBaseLoader().loadWorkoutsIncrementally(batchSize: 8) { batch in
+                    guard !batch.isEmpty else {
+                        return
+                    }
+                    workouts.append(contentsOf: batch)
+                }
+                let loadedWorkouts = await MainActor.run { workouts }
+                let index = await Task.detached(priority: .userInitiated) {
+                    WorkoutSearchIndex(workouts: loadedWorkouts)
+                }.value
                 await MainActor.run {
-                    workouts = loadedWorkouts
                     searchIndex = index
+                    isLoadingWorkouts = false
                     scheduleSearch()
                 }
             } catch {
                 await MainActor.run {
+                    isLoadingWorkouts = false
                     loadError = error.localizedDescription
                 }
             }
@@ -604,20 +628,6 @@ struct WorkoutDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(12)
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Sections")
-                        .font(.headline)
-
-                    if let sections = workout.content.parsedSections, !sections.isEmpty {
-                        ForEach(sections) { section in
-                            WorkoutSectionCard(section: section)
-                        }
-                    } else {
-                        Text("No structured sections parsed yet.")
-                            .foregroundStyle(.secondary)
-                    }
                 }
 
                 Button {

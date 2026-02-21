@@ -19,16 +19,50 @@ struct KnowledgeBaseLoader {
     }
 
     func loadWorkouts() throws -> [WorkoutDefinition] {
+        let urls = workoutMarkdownURLs()
+        return try urls.map(loadWorkout(from:))
+    }
+
+    func loadWorkoutsIncrementally(
+        batchSize: Int = 8,
+        onBatch: @MainActor @escaping ([WorkoutDefinition]) -> Void
+    ) async throws {
+        let urls = workoutMarkdownURLs()
+        guard !urls.isEmpty else {
+            await onBatch([])
+            return
+        }
+
+        let chunkSize = max(1, batchSize)
+        var batch: [WorkoutDefinition] = []
+        batch.reserveCapacity(chunkSize)
+
+        for url in urls {
+            let workout = try loadWorkout(from: url)
+            batch.append(workout)
+            if batch.count >= chunkSize {
+                await onBatch(batch)
+                batch.removeAll(keepingCapacity: true)
+            }
+        }
+
+        if !batch.isEmpty {
+            await onBatch(batch)
+        }
+    }
+
+    private func workoutMarkdownURLs() -> [URL] {
         guard let urls = bundle.urls(forResourcesWithExtension: "md", subdirectory: workoutsSubdirectory) else {
             return []
         }
+        return urls.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+    }
 
-        return try urls.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }).map { url in
-            let markdown = try String(contentsOf: url)
-            let id = url.deletingPathExtension().lastPathComponent
-            let versionHash = Self.hash(markdown)
-            return parser.parse(markdown: markdown, id: id, sourceURL: url, versionHash: versionHash)
-        }
+    private func loadWorkout(from url: URL) throws -> WorkoutDefinition {
+        let markdown = try String(contentsOf: url)
+        let id = url.deletingPathExtension().lastPathComponent
+        let versionHash = Self.hash(markdown)
+        return parser.parse(markdown: markdown, id: id, sourceURL: url, versionHash: versionHash)
     }
 
     private static func hash(_ markdown: String) -> String {
