@@ -2368,7 +2368,6 @@ actor OpenAIFunctionCallingService {
         let payloadText = jsonString(payload) ?? "{}"
         let body: [String: Any] = [
             "model": modelID,
-            "temperature": 0.3,
             "messages": [
                 [
                     "role": "system",
