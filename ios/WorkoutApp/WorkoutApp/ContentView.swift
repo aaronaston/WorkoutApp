@@ -82,6 +82,7 @@ struct DiscoveryView: View {
     @State private var isGenerating = false
     @State private var showTemplateManager = false
     @State private var searchRevision = 0
+    @State private var generationStatusNote: String?
 
     private let equipmentFilterOptions = ["Bodyweight", "Dumbbell", "Barbell", "Band", "Kettlebell"]
     private let locationFilterOptions = ["Home", "Gym", "Away"]
@@ -232,6 +233,11 @@ struct DiscoveryView: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(isGenerating)
+                            if let generationStatusNote, !generationStatusNote.isEmpty {
+                                Text(generationStatusNote)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         } else {
                             Text("LLM unavailable. Discovery is retrieval-only right now.")
                                 .font(.caption)
@@ -515,20 +521,26 @@ struct DiscoveryView: View {
         let contextWorkouts = Array(filteredSearchResults.prefix(3).map(\.workout))
         let baseBatch = generatedBatchCount
         Task(priority: .userInitiated) {
-            let generated = await generatePipelineCandidates(
+            let result = await generatePipelineCandidates(
                 query: query,
                 batchIndex: baseBatch,
                 trigger: trigger,
                 contextWorkouts: contextWorkouts
             )
-            let newValues = generated.filter { candidate in
+            let newValues = result.candidates.filter { candidate in
                 !generatedCandidates.contains(where: { $0.id == candidate.id })
             }
             generatedCandidates.append(contentsOf: newValues)
             generatedBatchCount += 1
             isGenerating = false
             generatedCandidateStore.saveCandidates(generatedCandidates, forQuery: query)
+            generationStatusNote = result.note
         }
+    }
+
+    private struct GenerationBatchResult {
+        var candidates: [GeneratedCandidate]
+        var note: String
     }
 
     private func generatePipelineCandidates(
@@ -536,30 +548,47 @@ struct DiscoveryView: View {
         batchIndex: Int,
         trigger: GenerationTrigger,
         contextWorkouts: [WorkoutDefinition]
-    ) async -> [GeneratedCandidate] {
+    ) async -> GenerationBatchResult {
+        let desiredCount = 5
         if let apiKey = preferencesStore.llmAPIKey(),
-           preferencesStore.preferences.llm.enabled,
-           let liveCandidate = try? await functionCallingService.generateCandidate(
+           preferencesStore.preferences.llm.enabled {
+            if let liveCandidates = try? await functionCallingService.generateCandidates(
                 query: query,
                 contextWorkouts: contextWorkouts,
                 trigger: trigger,
+                count: desiredCount,
                 modelID: preferencesStore.preferences.llm.modelID,
                 apiKey: apiKey
-           ) {
-            let fallbackCandidates = Array(deterministicPipelineCandidates(
+            ), !liveCandidates.isEmpty {
+                if liveCandidates.count >= desiredCount {
+                    return GenerationBatchResult(
+                        candidates: Array(liveCandidates.prefix(desiredCount)),
+                        note: "Generated with live function-calling pipeline."
+                    )
+                }
+
+                let fallback = deterministicPipelineCandidates(
+                    query: query,
+                    batchIndex: batchIndex,
+                    trigger: trigger,
+                    contextWorkouts: contextWorkouts
+                )
+                let needed = max(0, desiredCount - liveCandidates.count)
+                return GenerationBatchResult(
+                    candidates: liveCandidates + Array(fallback.prefix(needed)),
+                    note: "Mixed live function-calling + fallback generation (\(liveCandidates.count)/\(desiredCount) live)."
+                )
+            }
+        }
+
+        return GenerationBatchResult(
+            candidates: deterministicPipelineCandidates(
                 query: query,
                 batchIndex: batchIndex,
                 trigger: trigger,
                 contextWorkouts: contextWorkouts
-            ).dropFirst())
-            return [liveCandidate] + fallbackCandidates
-        }
-
-        return deterministicPipelineCandidates(
-            query: query,
-            batchIndex: batchIndex,
-            trigger: trigger,
-            contextWorkouts: contextWorkouts
+            ),
+            note: "Used deterministic fallback generation."
         )
     }
 
@@ -2049,74 +2078,141 @@ enum OpenAIFunctionCallingError: Error {
 actor OpenAIFunctionCallingService {
     private let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")
 
-    func generateCandidate(
+    func generateCandidates(
         query: String,
         contextWorkouts: [WorkoutDefinition],
         trigger: GenerationTrigger,
+        count: Int,
         modelID: String,
         apiKey: String
-    ) async throws -> GeneratedCandidate {
-        let now = Date()
+    ) async throws -> [GeneratedCandidate] {
+        let maxRounds = 2
+        let maxRepairAttempts = 1
+        let target = max(1, min(5, count))
+        var candidates: [GeneratedCandidate] = []
+        var usedTitles: Set<String> = []
 
-        let generated = try await callTool(
-            name: "generate_workout",
-            description: "Generate a structured workout plan candidate.",
-            schema: generateSchema(),
-            payload: [
-                "query": query,
-                "trigger": trigger.rawValue
-            ],
-            modelID: modelID,
-            apiKey: apiKey
-        )
+        for index in 0..<target {
+            let variationHint = "Variation \(index + 1) of \(target)"
+            let generated = try await callTool(
+                name: "generate_workout",
+                description: "Generate a structured workout plan candidate.",
+                schema: generateSchema(),
+                payload: [
+                    "query": query,
+                    "trigger": trigger.rawValue,
+                    "variationHint": variationHint,
+                    "usedTitles": Array(usedTitles)
+                ],
+                modelID: modelID,
+                apiKey: apiKey
+            )
 
-        let retrievedContext = retrieveContext(
-            query: query,
-            contextWorkouts: contextWorkouts,
-            candidate: generated
-        )
+            let retrievedContext = retrieveContext(
+                query: query,
+                contextWorkouts: contextWorkouts,
+                candidate: generated
+            )
 
-        let refined = (try? await callTool(
-            name: "refine_workout",
-            description: "Refine a generated workout with retrieved context.",
-            schema: refineSchema(),
-            payload: [
-                "query": query,
-                "candidate": generated,
-                "context": retrievedContext
-            ],
-            modelID: modelID,
-            apiKey: apiKey
-        )) ?? generated
+            var candidatePayload = generated
+            var generationRound = 1
+            for round in 1..<maxRounds {
+                if let refined = try? await callTool(
+                    name: "refine_workout",
+                    description: "Refine a generated workout with retrieved context.",
+                    schema: refineSchema(),
+                    payload: [
+                        "query": query,
+                        "candidate": candidatePayload,
+                        "context": retrievedContext,
+                        "round": round + 1
+                    ],
+                    modelID: modelID,
+                    apiKey: apiKey
+                ) {
+                    candidatePayload = refined
+                    generationRound = round + 1
+                }
+            }
 
-        let validation = try await callTool(
-            name: "validate_workout",
-            description: "Validate a workout candidate against hard constraints.",
-            schema: validateSchema(),
-            payload: [
-                "candidate": refined
-            ],
-            modelID: modelID,
-            apiKey: apiKey
-        )
+            var repairedPayload = candidatePayload
+            var repairAttempts = 0
+            while repairAttempts <= maxRepairAttempts {
+                let validation = try await callTool(
+                    name: "validate_workout",
+                    description: "Validate a workout candidate against hard constraints.",
+                    schema: validateSchema(),
+                    payload: [
+                        "candidate": repairedPayload
+                    ],
+                    modelID: modelID,
+                    apiKey: apiKey
+                )
 
-        if let isValid = validation["isValid"] as? Bool, !isValid {
-            throw OpenAIFunctionCallingError.validationFailed
+                let isValid = (validation["isValid"] as? Bool) ?? false
+                if isValid {
+                    let built = try buildCandidate(
+                        payload: repairedPayload,
+                        query: query,
+                        contextWorkouts: contextWorkouts,
+                        generationRound: generationRound,
+                        repairAttempts: repairAttempts
+                    )
+                    usedTitles.insert(built.title.lowercased())
+                    candidates.append(built)
+                    break
+                }
+
+                let issues = validation["issues"] as? [String] ?? []
+                guard repairAttempts < maxRepairAttempts else {
+                    break
+                }
+                if let repaired = try? await callTool(
+                    name: "refine_workout",
+                    description: "Repair a candidate to satisfy validation constraints.",
+                    schema: refineSchema(),
+                    payload: [
+                        "query": query,
+                        "candidate": repairedPayload,
+                        "context": retrievedContext,
+                        "repairIssues": issues
+                    ],
+                    modelID: modelID,
+                    apiKey: apiKey
+                ) {
+                    repairedPayload = repaired
+                }
+                repairAttempts += 1
+            }
         }
 
-        let title = (refined["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if candidates.isEmpty {
+            throw OpenAIFunctionCallingError.validationFailed
+        }
+        return candidates
+    }
+
+    private func buildCandidate(
+        payload: [String: Any],
+        query: String,
+        contextWorkouts: [WorkoutDefinition],
+        generationRound: Int,
+        repairAttempts: Int
+    ) throws -> GeneratedCandidate {
+        let now = Date()
+        let title = (payload["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !title.isEmpty else {
             throw OpenAIFunctionCallingError.invalidToolPayload
         }
 
-        let summary = (refined["summary"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Generated with LLM function-calling."
-        let sections = parseSections(from: refined["sections"])
+        let summary = (payload["summary"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Generated with LLM function-calling."
+        let sections = parseSections(from: payload["sections"])
         guard !sections.isEmpty else {
             throw OpenAIFunctionCallingError.invalidToolPayload
         }
 
         let markdown = renderMarkdown(title: title, sections: sections)
-        let explanation = (refined["explanation"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let explanation = (payload["explanation"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             ?? "Generated with function-calling and retrieval-aware refinement."
 
         return GeneratedCandidate(
@@ -2134,8 +2230,8 @@ actor OpenAIFunctionCallingService {
                 revisionPrompt: nil,
                 revisionIndex: 0,
                 contextWorkoutIDs: contextWorkouts.map(\.id),
-                generationRound: 2,
-                repairAttempts: 0,
+                generationRound: generationRound,
+                repairAttempts: repairAttempts,
                 createdAt: now
             )
         )
