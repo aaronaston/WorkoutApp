@@ -3,23 +3,23 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		100000000000000000000120 /* WorkoutAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000110 /* WorkoutAppApp.swift */; };
 		100000000000000000000121 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000111 /* ContentView.swift */; };
-		100000000000000000000160 /* CoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000150 /* CoreModels.swift */; };
-		100000000000000000000251 /* UserPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000250 /* UserPreferences.swift */; };
-		100000000000000000000221 /* WorkoutSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000220 /* WorkoutSessionStore.swift */; };
-		100000000000000000000271 /* SessionStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000270 /* SessionStateStore.swift */; };
-		100000000000000000000181 /* KnowledgeBaseLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000180 /* KnowledgeBaseLoader.swift */; };
-		100000000000000000000210 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000211 /* Markdown */; };
 		100000000000000000000122 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000112 /* Assets.xcassets */; };
-		100000000000000000000191 /* workouts in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000190 /* workouts */; };
+		100000000000000000000160 /* CoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000150 /* CoreModels.swift */; };
+		100000000000000000000181 /* KnowledgeBaseLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000180 /* KnowledgeBaseLoader.swift */; };
+		100000000000000000000191 /* ../../../resources/workouts in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000190 /* ../../../resources/workouts */; };
+		100000000000000000000210 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000211 /* Markdown */; };
+		100000000000000000000221 /* WorkoutSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000220 /* WorkoutSessionStore.swift */; };
 		100000000000000000000233 /* WorkoutAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000230 /* WorkoutAppTests.swift */; };
-		100000000000000000000261 /* UserPreferencesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000260 /* UserPreferencesStoreTests.swift */; };
 		100000000000000000000234 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 100000000000000000000232 /* XCTest.framework */; };
+		100000000000000000000251 /* UserPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000250 /* UserPreferences.swift */; };
+		100000000000000000000261 /* UserPreferencesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000260 /* UserPreferencesStoreTests.swift */; };
+		100000000000000000000271 /* SessionStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000270 /* SessionStateStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,20 +35,20 @@
 /* Begin PBXFileReference section */
 		100000000000000000000110 /* WorkoutAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutAppApp.swift; sourceTree = "<group>"; };
 		100000000000000000000111 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		100000000000000000000150 /* CoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreModels.swift; sourceTree = "<group>"; };
-		100000000000000000000250 /* UserPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserPreferences.swift; sourceTree = "<group>"; };
-		100000000000000000000220 /* WorkoutSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSessionStore.swift; sourceTree = "<group>"; };
-		100000000000000000000270 /* SessionStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStateStore.swift; sourceTree = "<group>"; };
-		100000000000000000000180 /* KnowledgeBaseLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeBaseLoader.swift; sourceTree = "<group>"; };
 		100000000000000000000112 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		100000000000000000000113 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		100000000000000000000114 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		100000000000000000000115 /* WorkoutApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = WorkoutApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		100000000000000000000190 /* workouts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ../../../resources/workouts; sourceTree = "<group>"; };
+		100000000000000000000150 /* CoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreModels.swift; sourceTree = "<group>"; };
+		100000000000000000000180 /* KnowledgeBaseLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeBaseLoader.swift; sourceTree = "<group>"; };
+		100000000000000000000190 /* ../../../resources/workouts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ../../../resources/workouts; sourceTree = "<group>"; };
+		100000000000000000000220 /* WorkoutSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSessionStore.swift; sourceTree = "<group>"; };
 		100000000000000000000230 /* WorkoutAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutAppTests.swift; sourceTree = "<group>"; };
-		100000000000000000000260 /* UserPreferencesStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserPreferencesStoreTests.swift; sourceTree = "<group>"; };
 		100000000000000000000231 /* WorkoutAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = WorkoutAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000232 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		100000000000000000000250 /* UserPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserPreferences.swift; sourceTree = "<group>"; };
+		100000000000000000000260 /* UserPreferencesStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserPreferencesStoreTests.swift; sourceTree = "<group>"; };
+		100000000000000000000270 /* SessionStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStateStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -101,11 +101,19 @@
 				100000000000000000000270 /* SessionStateStore.swift */,
 				100000000000000000000180 /* KnowledgeBaseLoader.swift */,
 				100000000000000000000112 /* Assets.xcassets */,
-				100000000000000000000190 /* workouts */,
+				100000000000000000000190 /* ../../../resources/workouts */,
 				100000000000000000000105 /* Preview Content */,
 				100000000000000000000114 /* Info.plist */,
 			);
 			path = WorkoutApp;
+			sourceTree = "<group>";
+		};
+		100000000000000000000105 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000113 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
 			sourceTree = "<group>";
 		};
 		100000000000000000000235 /* WorkoutAppTests */ = {
@@ -115,14 +123,6 @@
 				100000000000000000000260 /* UserPreferencesStoreTests.swift */,
 			);
 			path = WorkoutAppTests;
-			sourceTree = "<group>";
-		};
-		100000000000000000000105 /* Preview Content */ = {
-			isa = PBXGroup;
-			children = (
-				100000000000000000000113 /* Preview Assets.xcassets */,
-			);
-			path = "Preview Content";
 			sourceTree = "<group>";
 		};
 		100000000000000000000245 /* Frameworks */ = {
@@ -203,7 +203,7 @@
 			);
 			mainGroup = 100000000000000000000102;
 			packageReferences = (
-				100000000000000000000212 /* swift-markdown */,
+				100000000000000000000212 /* XCRemoteSwiftPackageReference "swift-markdown" */,
 			);
 			productRefGroup = 100000000000000000000103 /* Products */;
 			projectDirPath = "";
@@ -221,7 +221,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000122 /* Assets.xcassets in Resources */,
-				100000000000000000000191 /* workouts in Resources */,
+				100000000000000000000191 /* ../../../resources/workouts in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -267,25 +267,6 @@
 			targetProxy = 100000000000000000000244 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		100000000000000000000212 /* swift-markdown */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-markdown";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.3.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		100000000000000000000211 /* Markdown */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 100000000000000000000212 /* swift-markdown */;
-			productName = Markdown;
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		100000000000000000000200 /* Debug */ = {
@@ -391,14 +372,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_ASSET_PATHS = "\"WorkoutApp/Preview Content\"";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 9XML68G8N2;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = WorkoutApp/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ca.twisted-pair.WorkoutApp;
+				MARKETING_VERSION = 0.1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "ca.twisted-pair.WorkoutApp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -413,12 +394,12 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 9XML68G8N2;
 				INFOPLIST_FILE = WorkoutApp/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ca.twisted-pair.WorkoutApp;
+				MARKETING_VERSION = 0.1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "ca.twisted-pair.WorkoutApp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
@@ -434,8 +415,12 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = ca.twisted-pair.WorkoutAppTests;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ca.twisted-pair.WorkoutAppTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -452,8 +437,12 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = ca.twisted-pair.WorkoutAppTests;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ca.twisted-pair.WorkoutAppTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -492,6 +481,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		100000000000000000000212 /* XCRemoteSwiftPackageReference "swift-markdown" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-markdown";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.3.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		100000000000000000000211 /* Markdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 100000000000000000000212 /* XCRemoteSwiftPackageReference "swift-markdown" */;
+			productName = Markdown;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 100000000000000000000100 /* Project object */;
 }
