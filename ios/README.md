@@ -40,3 +40,16 @@ This warning can appear when Xcode enumerates paired devices that have no OS bui
 When building via CLI with `-scheme` and `-destination`, Xcode 26.2 may log this warning even though the build succeeds. Workarounds:
 - Use `-scheme WorkoutApp -sdk iphonesimulator -configuration Debug` for CLI builds.
 - If simulator destination resolution is flaky, select a concrete available simulator by UDID.
+
+### Simulator architecture policy
+Simulator builds in this project are arm64-only by default. x86_64 is excluded in project build settings for `iphonesimulator` SDK.
+
+Recommended CLI test command:
+
+```bash
+xcodebuild -project ios/WorkoutApp/WorkoutApp.xcodeproj \
+  -scheme WorkoutApp \
+  -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,id=<SIMULATOR_UDID>' \
+  test
+```
