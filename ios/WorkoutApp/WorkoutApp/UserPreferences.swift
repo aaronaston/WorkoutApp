@@ -159,7 +159,7 @@ struct LLMPreferences: Codable, Hashable {
     init(
         enabled: Bool = false,
         provider: LLMProvider = .openAI,
-        modelID: String = "gpt-5-mini",
+        modelID: String = "gpt-5.2",
         promptDetailLevel: LLMPromptDetailLevel = .augmented,
         shareCalendarContext: Bool = true,
         shareHistorySummaries: Bool = true,
@@ -194,7 +194,7 @@ struct LLMPreferences: Codable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
         provider = try container.decodeIfPresent(LLMProvider.self, forKey: .provider) ?? .openAI
-        modelID = try container.decodeIfPresent(String.self, forKey: .modelID) ?? "gpt-5-mini"
+        modelID = try container.decodeIfPresent(String.self, forKey: .modelID) ?? "gpt-5.2"
         promptDetailLevel = try container.decodeIfPresent(LLMPromptDetailLevel.self, forKey: .promptDetailLevel) ?? .augmented
         shareCalendarContext = try container.decodeIfPresent(Bool.self, forKey: .shareCalendarContext) ?? true
         shareHistorySummaries = try container.decodeIfPresent(Bool.self, forKey: .shareHistorySummaries) ?? true
