@@ -765,21 +765,53 @@ struct SessionView: View {
             .padding()
         }
         .navigationTitle("Session")
-        .confirmationDialog(
-            "Discard short session?",
-            isPresented: $showDiscardShortSessionPrompt,
-            titleVisibility: .visible
-        ) {
-            Button("Save to History") {
-                sessionState.endSession()
-                selectedTab = .history
+        .sheet(isPresented: $showDiscardShortSessionPrompt) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Discard short session?")
+                    .font(.headline)
+
+                Text("This session is under 5 minutes. Save it anyway or discard it?")
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    sessionState.endSession()
+                    selectedTab = .history
+                    showDiscardShortSessionPrompt = false
+                } label: {
+                    Text("Save to History")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.accentColor.opacity(0.15))
+                        .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+
+                Button(role: .destructive) {
+                    sessionState.cancelSession()
+                    showDiscardShortSessionPrompt = false
+                } label: {
+                    Text("Discard Session")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.red.opacity(0.12))
+                        .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    showDiscardShortSessionPrompt = false
+                } label: {
+                    Text("Keep Working Out")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
             }
-            Button("Discard Session", role: .destructive) {
-                sessionState.cancelSession()
-            }
-            Button("Keep Working Out", role: .cancel) {}
-        } message: {
-            Text("This session is under 5 minutes. Save it anyway or discard it?")
+            .padding()
+            .presentationDetents([.height(300)])
+            .presentationDragIndicator(.visible)
         }
     }
 
