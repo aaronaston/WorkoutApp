@@ -552,31 +552,45 @@ struct DiscoveryView: View {
         let desiredCount = 5
         if let apiKey = preferencesStore.llmAPIKey(),
            preferencesStore.preferences.llm.enabled {
-            if let liveCandidates = try? await functionCallingService.generateCandidates(
-                query: query,
-                contextWorkouts: contextWorkouts,
-                trigger: trigger,
-                count: desiredCount,
-                modelID: preferencesStore.preferences.llm.modelID,
-                apiKey: apiKey
-            ), !liveCandidates.isEmpty {
-                if liveCandidates.count >= desiredCount {
+            do {
+                let liveCandidates = try await functionCallingService.generateCandidates(
+                    query: query,
+                    contextWorkouts: contextWorkouts,
+                    trigger: trigger,
+                    count: desiredCount,
+                    modelID: preferencesStore.preferences.llm.modelID,
+                    apiKey: apiKey
+                )
+                if !liveCandidates.isEmpty {
+                    if liveCandidates.count >= desiredCount {
+                        return GenerationBatchResult(
+                            candidates: Array(liveCandidates.prefix(desiredCount)),
+                            note: "Generated with live function-calling pipeline."
+                        )
+                    }
+
+                    let fallback = deterministicPipelineCandidates(
+                        query: query,
+                        batchIndex: batchIndex,
+                        trigger: trigger,
+                        contextWorkouts: contextWorkouts
+                    )
+                    let needed = max(0, desiredCount - liveCandidates.count)
                     return GenerationBatchResult(
-                        candidates: Array(liveCandidates.prefix(desiredCount)),
-                        note: "Generated with live function-calling pipeline."
+                        candidates: liveCandidates + Array(fallback.prefix(needed)),
+                        note: "Mixed live function-calling + fallback generation (\(liveCandidates.count)/\(desiredCount) live)."
                     )
                 }
-
-                let fallback = deterministicPipelineCandidates(
-                    query: query,
-                    batchIndex: batchIndex,
-                    trigger: trigger,
-                    contextWorkouts: contextWorkouts
-                )
-                let needed = max(0, desiredCount - liveCandidates.count)
+            } catch {
+                let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 return GenerationBatchResult(
-                    candidates: liveCandidates + Array(fallback.prefix(needed)),
-                    note: "Mixed live function-calling + fallback generation (\(liveCandidates.count)/\(desiredCount) live)."
+                    candidates: deterministicPipelineCandidates(
+                        query: query,
+                        batchIndex: batchIndex,
+                        trigger: trigger,
+                        contextWorkouts: contextWorkouts
+                    ),
+                    note: "Used deterministic fallback generation. Live generation failed: \(reason)"
                 )
             }
         }
@@ -674,32 +688,110 @@ struct DiscoveryView: View {
     }
 
     private func generatedSections(query: String, seed: Int) -> [WorkoutSection] {
-        let effort = 8 + (seed % 5) * 2
+        let profile = queryProfile(for: query)
+        let effort = max(6, min(18, (profile.durationMinutes ?? 30) / 4))
+        let equipmentLabel = profile.equipment ?? "bodyweight"
+        let mainPair = primaryExercisePair(focus: profile.focus, equipment: equipmentLabel, seed: seed)
+        let accessory = accessoryExercise(focus: profile.focus, equipment: equipmentLabel, seed: seed)
         return [
             WorkoutSection(
                 title: "Warmup",
-                detail: "Prime movement patterns before loading.",
+                detail: "Prime movement patterns for \(profile.focus) work.",
                 items: [
                     WorkoutItem(name: "Easy cardio", prescription: "\(effort) minutes"),
-                    WorkoutItem(name: "Dynamic mobility flow", prescription: "2 rounds")
+                    WorkoutItem(name: "Dynamic mobility flow", prescription: "2 rounds"),
+                    WorkoutItem(name: "\(equipmentLabel.capitalized) prep drill", prescription: "2 x 8")
                 ]
             ),
             WorkoutSection(
                 title: "Main Set",
-                detail: "Primary work tuned to \(query).",
+                detail: "Primary work tuned to \(query) using \(equipmentLabel).",
                 items: [
-                    WorkoutItem(name: "Compound movement", prescription: "4 x 6-8"),
-                    WorkoutItem(name: "Accessory superset", prescription: "3 rounds")
+                    WorkoutItem(name: mainPair.0, prescription: "4 x 6-8"),
+                    WorkoutItem(name: mainPair.1, prescription: "4 x 8-10"),
+                    WorkoutItem(name: accessory, prescription: "3 rounds")
                 ]
             ),
             WorkoutSection(
                 title: "Cooldown",
-                detail: nil,
+                detail: "Downshift and recover from \(profile.focus) loading.",
                 items: [
                     WorkoutItem(name: "Breathing + stretch", prescription: "5 minutes")
                 ]
             )
         ]
+    }
+
+    private struct QueryProfile {
+        var focus: String
+        var equipment: String?
+        var durationMinutes: Int?
+    }
+
+    private func queryProfile(for query: String) -> QueryProfile {
+        let value = query.lowercased()
+        let focus: String
+        if value.contains("upper") || value.contains("chest") || value.contains("back") || value.contains("shoulder") {
+            focus = "upper body"
+        } else if value.contains("lower") || value.contains("leg") || value.contains("glute") {
+            focus = "lower body"
+        } else if value.contains("core") || value.contains("abs") {
+            focus = "core"
+        } else if value.contains("mobility") || value.contains("recovery") {
+            focus = "mobility"
+        } else {
+            focus = "full body"
+        }
+
+        let equipment: String?
+        if value.contains("dumbbell") {
+            equipment = "dumbbell"
+        } else if value.contains("barbell") {
+            equipment = "barbell"
+        } else if value.contains("kettlebell") {
+            equipment = "kettlebell"
+        } else if value.contains("band") {
+            equipment = "band"
+        } else {
+            equipment = nil
+        }
+
+        let duration = Self.extractDurationMinutes(from: value)
+        return QueryProfile(focus: focus, equipment: equipment, durationMinutes: duration)
+    }
+
+    private func primaryExercisePair(focus: String, equipment: String, seed: Int) -> (String, String) {
+        let pairs: [(String, String)]
+        switch (focus, equipment) {
+        case ("upper body", "dumbbell"):
+            pairs = [("Dumbbell bench press", "One-arm dumbbell row"), ("Dumbbell incline press", "Dumbbell supported row")]
+        case ("lower body", "dumbbell"):
+            pairs = [("Dumbbell goblet squat", "Dumbbell Romanian deadlift"), ("Dumbbell split squat", "Dumbbell hip hinge")]
+        case ("core", _):
+            pairs = [("Weighted dead bug", "Plank drag-through"), ("Hollow body hold", "Side plank reach-through")]
+        case ("mobility", _):
+            pairs = [("World's greatest stretch", "90/90 hip switch"), ("Thoracic rotation flow", "Ankle dorsiflexion rocks")]
+        default:
+            pairs = [("Squat pattern", "Push pattern"), ("Hinge pattern", "Pull pattern")]
+        }
+        return pairs[seed % pairs.count]
+    }
+
+    private func accessoryExercise(focus: String, equipment: String, seed: Int) -> String {
+        let options: [String]
+        switch (focus, equipment) {
+        case ("upper body", "dumbbell"):
+            options = ["Dumbbell lateral raise + curl superset", "Dumbbell triceps extension + rear delt fly"]
+        case ("lower body", "dumbbell"):
+            options = ["Dumbbell reverse lunge + calf raise", "Dumbbell step-up + hamstring bridge"]
+        case ("core", _):
+            options = ["Pallof press + bear crawl", "Hanging knee raise + suitcase carry"]
+        case ("mobility", _):
+            options = ["Controlled articular rotations circuit", "Low-load tempo flow circuit"]
+        default:
+            options = ["Accessory superset", "Tempo conditioning finisher"]
+        }
+        return options[seed % options.count]
     }
 
     private func generatedMarkdown(title: String, sections: [WorkoutSection]) -> String {
@@ -2073,6 +2165,24 @@ enum OpenAIFunctionCallingError: Error {
     case missingToolArguments
     case invalidToolPayload
     case validationFailed
+    case httpError(String)
+}
+
+extension OpenAIFunctionCallingError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse:
+            return "Invalid response from provider."
+        case .missingToolArguments:
+            return "Provider returned no function arguments."
+        case .invalidToolPayload:
+            return "Provider returned malformed tool payload."
+        case .validationFailed:
+            return "All generated candidates failed validation."
+        case .httpError(let message):
+            return message
+        }
+    }
 }
 
 actor OpenAIFunctionCallingService {
@@ -2290,8 +2400,12 @@ actor OpenAIFunctionCallingService {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+        guard let http = response as? HTTPURLResponse else {
             throw OpenAIFunctionCallingError.invalidResponse
+        }
+        guard (200...299).contains(http.statusCode) else {
+            let message = parseAPIErrorMessage(from: data) ?? "HTTP \(http.statusCode)"
+            throw OpenAIFunctionCallingError.httpError(message)
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -2394,6 +2508,21 @@ actor OpenAIFunctionCallingService {
             return nil
         }
         return String(data: data, encoding: .utf8)
+    }
+
+    private func parseAPIErrorMessage(from data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        if let error = json["error"] as? [String: Any],
+           let message = error["message"] as? String,
+           !message.isEmpty {
+            return message
+        }
+        if let message = json["message"] as? String, !message.isEmpty {
+            return message
+        }
+        return nil
     }
 
     private func generateSchema() -> [String: Any] {
