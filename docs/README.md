@@ -12,6 +12,8 @@ This folder contains architecture and decision documentation.
   - `docs/current-state.md`
 - Current-vs-target gaps:
   - `docs/gap-analysis-current-vs-target.md`
+- Execution roadmap:
+  - `docs/execution-plan.md`
 
 ## Structure
 - architecture/ : system architecture references and artifacts
