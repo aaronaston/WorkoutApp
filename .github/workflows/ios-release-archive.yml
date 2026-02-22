@@ -1,0 +1,68 @@
+name: iOS Release Archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      require_watch_targets:
+        description: "Fail if no watchOS targets are present in the Xcode project"
+        required: false
+        default: "false"
+      scheme:
+        description: "Xcode scheme to archive"
+        required: false
+        default: "WorkoutApp"
+
+jobs:
+  archive:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app/Contents/Developer
+
+      - name: Decode App Store Connect API key
+        if: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 != '' }}
+        env:
+          APP_STORE_CONNECT_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/appstoreconnect"
+          echo "$APP_STORE_CONNECT_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/appstoreconnect/AuthKey.p8"
+
+      - name: Import distribution certificate
+        if: ${{ secrets.IOS_DISTRIBUTION_CERT_BASE64 != '' && secrets.IOS_DISTRIBUTION_CERT_PASSWORD != '' }}
+        env:
+          CERT_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/distribution.p12"
+          echo "$CERT_BASE64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+      - name: Archive and export
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_STORE_CONNECT_KEY_PATH: ${{ runner.temp }}/appstoreconnect/AuthKey.p8
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          REQUIRE_WATCH_TARGETS: ${{ inputs.require_watch_targets }}
+          SCHEME: ${{ inputs.scheme }}
+        run: |
+          chmod +x scripts/ci-archive-release.sh
+          scripts/ci-archive-release.sh
+
+      - name: Upload archive artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-archive
+          path: |
+            ${{ runner.temp }}/archives/*.xcarchive
+            ${{ runner.temp }}/export/*

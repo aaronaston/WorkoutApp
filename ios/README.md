@@ -2,6 +2,16 @@
 
 Open `ios/WorkoutApp/WorkoutApp.xcodeproj` in Xcode to run the app.
 
+## Release Archive Workflow (Xcode/CI)
+
+The release archive pipeline is defined in:
+
+- `scripts/ci-archive-release.sh`
+- `.github/workflows/ios-release-archive.yml`
+- `docs/release/ios-watch-release-archive.md`
+
+It archives the shared `WorkoutApp` scheme in `Release` configuration using automatic signing with an Apple Distribution certificate and App Store Connect API key.
+
 ## Physical iPhone Setup
 
 For this project (current branch), signing for a physical iPhone is blocked until a development team is selected in Xcode.
@@ -19,6 +29,7 @@ For this project (current branch), signing for a physical iPhone is blocked unti
 Notes:
 - The test target bundle ID is `ca.twisted-pair.WorkoutAppTests`.
 - This repo currently has iOS app + tests targets only; no watchOS target is present in the Xcode project.
+- When watchOS targets are added, include them in the shared `WorkoutApp` scheme so one archive contains both phone and watch binaries.
 
 ## Troubleshooting
 
