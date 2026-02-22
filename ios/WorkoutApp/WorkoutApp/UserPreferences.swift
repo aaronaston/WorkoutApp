@@ -382,6 +382,10 @@ final class UserPreferencesStore: ObservableObject {
         return .ready
     }
 
+    func llmAPIKey() -> String? {
+        Self.loadLLMAPIKey(from: apiKeyStore, service: apiKeyService, account: apiKeyAccount)
+    }
+
     private func savePreferences() {
         do {
             let data = try encoder.encode(preferences)

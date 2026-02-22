@@ -666,3 +666,88 @@ final class WorkoutSessionMigrationTests: XCTestCase {
         XCTAssertEqual(session.workoutSnapshot.versionHash, "abc123")
     }
 }
+
+final class DiscoveryGenerationPolicyTests: XCTestCase {
+    func testGenerativeIntentTriggersInitialGenerationWhenAvailable() {
+        let policy = DiscoveryGenerationPolicy(lowConfidenceThreshold: 0.3)
+        let intent = policy.classifyIntent(query: "create a new lower body plan")
+        let confidence = RetrievalConfidence(score: 0.8, threshold: 0.3)
+
+        let decision = policy.initialDecision(intent: intent, retrievalConfidence: confidence, llmAvailable: true)
+
+        XCTAssertTrue(decision.shouldGenerate)
+        XCTAssertEqual(decision.trigger, .initialQuery)
+    }
+
+    func testSearchlikeLowConfidenceTriggersGeneration() {
+        let policy = DiscoveryGenerationPolicy(lowConfidenceThreshold: 0.5)
+        let intent = policy.classifyIntent(query: "quick upper body")
+        let confidence = RetrievalConfidence(score: 0.2, threshold: 0.5)
+
+        let decision = policy.initialDecision(intent: intent, retrievalConfidence: confidence, llmAvailable: true)
+
+        XCTAssertEqual(intent, .searchlike)
+        XCTAssertTrue(decision.shouldGenerate)
+        XCTAssertEqual(decision.trigger, .lowRetrievalConfidence)
+    }
+
+    func testLoadMoreHonorsLLMAvailability() {
+        let policy = DiscoveryGenerationPolicy()
+
+        XCTAssertTrue(policy.loadMoreDecision(llmAvailable: true).shouldGenerate)
+        XCTAssertFalse(policy.loadMoreDecision(llmAvailable: false).shouldGenerate)
+    }
+}
+
+final class TemplateVariantStoreTests: XCTestCase {
+    @MainActor
+    func testTemplateAndVariantRoundTrip() throws {
+        let baseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TemplateVariantStoreTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let templateStore = WorkoutTemplateStore(fileURL: baseURL.appendingPathComponent("templates.json"))
+        let variantStore = WorkoutVariantStore(fileURL: baseURL.appendingPathComponent("variants.json"))
+
+        let baseWorkout = makeWorkout(id: "base-1", title: "Base Workout")
+        let createdTemplate = try templateStore.createTemplateFromWorkout(baseWorkout)
+        _ = try templateStore.duplicateTemplate(createdTemplate)
+        try templateStore.renameTemplate(id: createdTemplate.id, title: "Edited Template")
+
+        _ = try variantStore.createVariant(from: baseWorkout, title: "Base Variant")
+        let resolved = variantStore.resolveWorkouts(baseWorkouts: [baseWorkout] + templateStore.asWorkouts())
+
+        XCTAssertTrue(templateStore.templates.contains(where: { $0.title == "Edited Template" }))
+        XCTAssertTrue(templateStore.templates.count >= 2)
+        XCTAssertEqual(resolved.first?.source, .variant)
+        XCTAssertEqual(resolved.first?.title, "Base Variant")
+    }
+
+    @MainActor
+    private func makeWorkout(id: WorkoutID, title: String) -> WorkoutDefinition {
+        WorkoutDefinition(
+            id: id,
+            source: .knowledgeBase,
+            sourceID: id,
+            sourceURL: nil,
+            title: title,
+            summary: nil,
+            metadata: WorkoutMetadata(
+                durationMinutes: 30,
+                focusTags: ["strength"],
+                equipmentTags: ["dumbbell"],
+                locationTag: "Home",
+                otherTags: []
+            ),
+            content: WorkoutContent(
+                sourceMarkdown: "# \(title)",
+                parsedSections: [WorkoutSection(title: "Main", items: [WorkoutItem(name: "Squat")])],
+                notes: nil
+            ),
+            timerConfiguration: nil,
+            versionHash: "v1",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            updatedAt: Date(timeIntervalSince1970: 1_000)
+        )
+    }
+}

@@ -787,3 +787,145 @@ struct WorkoutRecommendationEngine {
         return calendar.dateComponents([.day], from: from, to: to).day ?? 0
     }
 }
+
+enum DiscoveryIntent: String, Codable, Hashable {
+    case searchlike
+    case generative
+}
+
+enum DiscoveryMode: String, Codable, Hashable {
+    case retrievalOnly
+    case retrievalPlusGeneration
+    case generationFirst
+}
+
+enum GenerationTrigger: String, Codable, Hashable {
+    case initialQuery
+    case lowRetrievalConfidence
+    case bottomDetent
+    case refinement
+}
+
+struct RetrievalConfidence: Codable, Hashable {
+    var score: Double
+    var threshold: Double
+
+    var isLowConfidence: Bool {
+        score < threshold
+    }
+}
+
+struct GenerationDecision: Codable, Hashable {
+    var shouldGenerate: Bool
+    var trigger: GenerationTrigger?
+}
+
+struct GeneratedCandidateProvenance: Codable, Hashable {
+    var originQuery: String
+    var baseWorkoutID: WorkoutID?
+    var revisionPrompt: String?
+    var revisionIndex: Int
+    var contextWorkoutIDs: [WorkoutID]
+    var generationRound: Int
+    var repairAttempts: Int
+    var createdAt: Date
+}
+
+struct GeneratedCandidate: Identifiable, Codable, Hashable {
+    let id: WorkoutID
+    var title: String
+    var summary: String
+    var content: WorkoutContent
+    var explanation: String
+    var originQuery: String
+    var isSaved: Bool
+    var createdAt: Date
+    var provenance: GeneratedCandidateProvenance
+
+    func asWorkoutDefinition() -> WorkoutDefinition {
+        WorkoutDefinition(
+            id: id,
+            source: .generated,
+            sourceID: id,
+            sourceURL: nil,
+            title: title,
+            summary: summary,
+            metadata: WorkoutMetadata(
+                durationMinutes: nil,
+                focusTags: [],
+                equipmentTags: [],
+                locationTag: nil,
+                otherTags: ["generated"]
+            ),
+            content: content,
+            timerConfiguration: nil,
+            versionHash: nil,
+            createdAt: createdAt,
+            updatedAt: createdAt
+        )
+    }
+}
+
+struct DiscoveryQuerySession: Codable, Hashable {
+    var query: String
+    var intent: DiscoveryIntent
+    var retrievalConfidence: RetrievalConfidence
+    var generationBatches: Int
+}
+
+struct DiscoveryOrchestrationResult {
+    var mode: DiscoveryMode
+    var session: DiscoveryQuerySession
+    var matchedWorkouts: [WorkoutSearchResult]
+    var generatedCandidates: [GeneratedCandidate]
+}
+
+struct DiscoveryGenerationPolicy {
+    let lowConfidenceThreshold: Double
+
+    init(lowConfidenceThreshold: Double = 0.34) {
+        self.lowConfidenceThreshold = lowConfidenceThreshold
+    }
+
+    func classifyIntent(query: String) -> DiscoveryIntent {
+        let value = query.lowercased()
+        let generativeSignals = [
+            "create", "build", "design", "generate", "new", "custom", "invent", "plan me"
+        ]
+        if generativeSignals.contains(where: { value.contains($0) }) {
+            return .generative
+        }
+        return .searchlike
+    }
+
+    func retrievalConfidence(for results: [WorkoutSearchResult]) -> RetrievalConfidence {
+        guard let first = results.first else {
+            return RetrievalConfidence(score: 0, threshold: lowConfidenceThreshold)
+        }
+        return RetrievalConfidence(score: max(0, min(1, first.score)), threshold: lowConfidenceThreshold)
+    }
+
+    func initialDecision(
+        intent: DiscoveryIntent,
+        retrievalConfidence: RetrievalConfidence,
+        llmAvailable: Bool
+    ) -> GenerationDecision {
+        guard llmAvailable else {
+            return GenerationDecision(shouldGenerate: false, trigger: nil)
+        }
+        if intent == .generative {
+            return GenerationDecision(shouldGenerate: true, trigger: .initialQuery)
+        }
+        if retrievalConfidence.isLowConfidence {
+            return GenerationDecision(shouldGenerate: true, trigger: .lowRetrievalConfidence)
+        }
+        return GenerationDecision(shouldGenerate: false, trigger: nil)
+    }
+
+    func loadMoreDecision(llmAvailable: Bool) -> GenerationDecision {
+        GenerationDecision(
+            shouldGenerate: llmAvailable,
+            trigger: llmAvailable ? .bottomDetent : nil
+        )
+    }
+}

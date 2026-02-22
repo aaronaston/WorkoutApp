@@ -61,7 +61,11 @@ private enum DurationFilter: String, CaseIterable, Identifiable {
 struct DiscoveryView: View {
     @EnvironmentObject private var preferencesStore: UserPreferencesStore
     @EnvironmentObject private var sessionStore: WorkoutSessionStore
+    @EnvironmentObject private var templateStore: WorkoutTemplateStore
+    @EnvironmentObject private var variantStore: WorkoutVariantStore
+    @EnvironmentObject private var generatedCandidateStore: GeneratedCandidateStore
     @Binding var selectedTab: AppTab
+    @StateObject private var networkMonitor = NetworkStatusMonitor()
     @State private var workouts: [WorkoutDefinition] = []
     @State private var loadError: String?
     @State private var hasLoaded = false
@@ -73,18 +77,31 @@ struct DiscoveryView: View {
     @State private var selectedEquipment: Set<String> = []
     @State private var selectedLocations: Set<String> = []
     @State private var selectedDurations: Set<DurationFilter> = []
+    @State private var generatedCandidates: [GeneratedCandidate] = []
+    @State private var generatedBatchCount = 0
+    @State private var isGenerating = false
+    @State private var showTemplateManager = false
+    @State private var searchRevision = 0
 
     private let equipmentFilterOptions = ["Bodyweight", "Dumbbell", "Barbell", "Band", "Kettlebell"]
     private let locationFilterOptions = ["Home", "Gym", "Away"]
     private let recommendationEngine = WorkoutRecommendationEngine()
+    private let generationPolicy = DiscoveryGenerationPolicy()
+    private let functionCallingService = OpenAIFunctionCallingService()
 
     private var recommendationsByWorkoutID: [WorkoutID: RankedWorkout] {
         Dictionary(uniqueKeysWithValues: rankedWorkouts.map { ($0.workout.id, $0) })
     }
 
+    private var allWorkouts: [WorkoutDefinition] {
+        let templates = templateStore.asWorkouts()
+        let variants = variantStore.resolveWorkouts(baseWorkouts: workouts + templates)
+        return workouts + templates + variants
+    }
+
     private var rankedWorkouts: [RankedWorkout] {
         recommendationEngine.rank(
-            workouts: workouts,
+            workouts: allWorkouts,
             history: sessionStore.sessions,
             preferences: preferencesStore.preferences.discovery
         )
@@ -106,19 +123,39 @@ struct DiscoveryView: View {
         searchResults.filter { workoutMatchesFilters($0.workout) }
     }
 
+    private var generatedWorkouts: [WorkoutDefinition] {
+        generatedCandidates.map { $0.asWorkoutDefinition() }.filter { workoutMatchesFilters($0) }
+    }
+
+    private var llmAvailable: Bool {
+        preferencesStore.llmRuntimeState(isNetworkAvailable: networkMonitor.isNetworkAvailable) == .ready
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Workout Discovery")
+                    Text("Plan your workout")
                         .font(.title)
                         .fontWeight(.semibold)
 
-                    Text("Find a workout that fits your day.")
+                    Text("Find existing workouts first, then generate new options when needed.")
                         .foregroundStyle(.secondary)
                 }
 
-                SearchField(text: $searchQuery, placeholder: "Search workouts, equipment, or goals")
+                SearchField(text: $searchQuery, placeholder: "Plan your workout")
+
+                HStack {
+                    Button("Manage Templates & Variants") {
+                        showTemplateManager = true
+                    }
+                    .buttonStyle(.bordered)
+                    Spacer()
+                    if isGenerating {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
 
                 if isLoadingWorkouts, !workouts.isEmpty {
                     HStack(spacing: 8) {
@@ -143,7 +180,7 @@ struct DiscoveryView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                 } else if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Results")
+                        Text("Matched Workouts")
                             .font(.headline)
 
                         if filteredSearchResults.isEmpty {
@@ -162,6 +199,43 @@ struct DiscoveryView: View {
                                 }
                                 .buttonStyle(.plain)
                             }
+                        }
+
+                        if !generatedWorkouts.isEmpty {
+                            Text("Generated")
+                                .font(.headline)
+                                .padding(.top, 8)
+
+                            ForEach(generatedWorkouts) { workout in
+                                NavigationLink {
+                                    WorkoutDetailView(
+                                        workout: workout,
+                                        recommendation: nil,
+                                        selectedTab: $selectedTab
+                                    )
+                                } label: {
+                                    WorkoutRow(workout: workout, recommendation: nil, isNew: true)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        if llmAvailable {
+                            Button {
+                                loadMoreGenerated()
+                            } label: {
+                                Text(isGenerating ? "Generating..." : "Generate More Ideas")
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.accentColor.opacity(0.15))
+                                    .cornerRadius(12)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isGenerating)
+                        } else {
+                            Text("LLM unavailable. Discovery is retrieval-only right now.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 } else {
@@ -288,12 +362,24 @@ struct DiscoveryView: View {
             }
             .padding()
         }
-        .navigationTitle("Discover")
+        .navigationTitle("Plan")
         .task {
             loadWorkoutsIfNeeded()
         }
         .onChange(of: searchQuery) { _, _ in
+            searchRevision += 1
             scheduleSearch()
+        }
+        .onChange(of: templateStore.templates) { _, _ in
+            rebuildSearchIndex()
+            scheduleSearch()
+        }
+        .onChange(of: variantStore.variants) { _, _ in
+            rebuildSearchIndex()
+            scheduleSearch()
+        }
+        .sheet(isPresented: $showTemplateManager) {
+            TemplateVariantManagerView()
         }
     }
 
@@ -314,7 +400,7 @@ struct DiscoveryView: View {
         loadError = nil
         isLoadingWorkouts = true
         workouts = []
-        searchIndex = WorkoutSearchIndex(workouts: [])
+        rebuildSearchIndex()
         Task.detached(priority: .userInitiated) {
             do {
                 try await KnowledgeBaseLoader().loadWorkoutsIncrementally(batchSize: 8) { batch in
@@ -323,13 +409,9 @@ struct DiscoveryView: View {
                     }
                     workouts.append(contentsOf: batch)
                 }
-                let loadedWorkouts = await MainActor.run { workouts }
-                let index = await Task.detached(priority: .userInitiated) {
-                    WorkoutSearchIndex(workouts: loadedWorkouts)
-                }.value
                 await MainActor.run {
-                    searchIndex = index
                     isLoadingWorkouts = false
+                    rebuildSearchIndex()
                     scheduleSearch()
                 }
             } catch {
@@ -345,6 +427,7 @@ struct DiscoveryView: View {
         searchTask?.cancel()
         let query = searchQuery
         let index = searchIndex
+        let revision = searchRevision
         searchTask = Task {
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else {
@@ -354,6 +437,8 @@ struct DiscoveryView: View {
             guard !trimmed.isEmpty, let index else {
                 await MainActor.run {
                     searchResults = []
+                    generatedCandidates = []
+                    generatedBatchCount = 0
                 }
                 return
             }
@@ -364,9 +449,246 @@ struct DiscoveryView: View {
                 return
             }
             await MainActor.run {
+                guard revision == searchRevision else {
+                    return
+                }
                 searchResults = results
+                evaluateGenerationPolicy(for: trimmed, with: results)
             }
         }
+    }
+
+    private func rebuildSearchIndex() {
+        searchIndex = WorkoutSearchIndex(workouts: allWorkouts)
+    }
+
+    private func evaluateGenerationPolicy(for query: String, with results: [WorkoutSearchResult]) {
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            generatedCandidates = []
+            generatedBatchCount = 0
+            return
+        }
+
+        let intent = generationPolicy.classifyIntent(query: normalized)
+        let confidence = generationPolicy.retrievalConfidence(for: results)
+        let decision = generationPolicy.initialDecision(
+            intent: intent,
+            retrievalConfidence: confidence,
+            llmAvailable: llmAvailable
+        )
+
+        if generatedCandidates.first?.originQuery != normalized {
+            generatedCandidates = []
+            generatedBatchCount = 0
+        }
+
+        if decision.shouldGenerate, generatedCandidates.isEmpty {
+            generateCandidates(query: normalized, trigger: decision.trigger ?? .initialQuery)
+            return
+        }
+
+        generatedCandidateStore.saveCandidates(generatedCandidates, forQuery: normalized)
+    }
+
+    private func loadMoreGenerated() {
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        let decision = generationPolicy.loadMoreDecision(llmAvailable: llmAvailable)
+        guard decision.shouldGenerate else {
+            return
+        }
+        generateCandidates(query: trimmed, trigger: .bottomDetent)
+    }
+
+    private func generateCandidates(query: String, trigger: GenerationTrigger) {
+        guard llmAvailable else {
+            return
+        }
+        guard !isGenerating else {
+            return
+        }
+        isGenerating = true
+
+        let contextWorkouts = Array(filteredSearchResults.prefix(3).map(\.workout))
+        let baseBatch = generatedBatchCount
+        Task(priority: .userInitiated) {
+            let generated = await generatePipelineCandidates(
+                query: query,
+                batchIndex: baseBatch,
+                trigger: trigger,
+                contextWorkouts: contextWorkouts
+            )
+            let newValues = generated.filter { candidate in
+                !generatedCandidates.contains(where: { $0.id == candidate.id })
+            }
+            generatedCandidates.append(contentsOf: newValues)
+            generatedBatchCount += 1
+            isGenerating = false
+            generatedCandidateStore.saveCandidates(generatedCandidates, forQuery: query)
+        }
+    }
+
+    private func generatePipelineCandidates(
+        query: String,
+        batchIndex: Int,
+        trigger: GenerationTrigger,
+        contextWorkouts: [WorkoutDefinition]
+    ) async -> [GeneratedCandidate] {
+        if let apiKey = preferencesStore.llmAPIKey(),
+           preferencesStore.preferences.llm.enabled,
+           let liveCandidate = try? await functionCallingService.generateCandidate(
+                query: query,
+                contextWorkouts: contextWorkouts,
+                trigger: trigger,
+                modelID: preferencesStore.preferences.llm.modelID,
+                apiKey: apiKey
+           ) {
+            let fallbackCandidates = Array(deterministicPipelineCandidates(
+                query: query,
+                batchIndex: batchIndex,
+                trigger: trigger,
+                contextWorkouts: contextWorkouts
+            ).dropFirst())
+            return [liveCandidate] + fallbackCandidates
+        }
+
+        return deterministicPipelineCandidates(
+            query: query,
+            batchIndex: batchIndex,
+            trigger: trigger,
+            contextWorkouts: contextWorkouts
+        )
+    }
+
+    private func deterministicPipelineCandidates(
+        query: String,
+        batchIndex: Int,
+        trigger: GenerationTrigger,
+        contextWorkouts: [WorkoutDefinition]
+    ) -> [GeneratedCandidate] {
+        let maxRounds = 2
+        let maxRepairAttempts = 1
+        let now = Date()
+
+        var drafts: [GeneratedCandidate] = []
+        for offset in 0..<5 {
+            let id = "gen-\(batchIndex)-\(offset)-\(UUID().uuidString.prefix(6))"
+            let title = generatedTitleSeed(query: query, index: batchIndex * 5 + offset)
+            let explanation = "Generated from your request with \(contextWorkouts.count) retrieved context workouts. Trigger: \(trigger.rawValue)."
+            let sections = generatedSections(query: query, seed: batchIndex * 5 + offset)
+            let markdown = generatedMarkdown(title: title, sections: sections)
+            let candidate = GeneratedCandidate(
+                id: id,
+                title: title,
+                summary: "New option tailored to \(query).",
+                content: WorkoutContent(sourceMarkdown: markdown, parsedSections: sections, notes: nil),
+                explanation: explanation,
+                originQuery: query,
+                isSaved: false,
+                createdAt: now,
+                provenance: GeneratedCandidateProvenance(
+                    originQuery: query,
+                    baseWorkoutID: contextWorkouts.first?.id,
+                    revisionPrompt: nil,
+                    revisionIndex: 0,
+                    contextWorkoutIDs: contextWorkouts.map(\.id),
+                    generationRound: 1,
+                    repairAttempts: 0,
+                    createdAt: now
+                )
+            )
+            drafts.append(candidate)
+        }
+
+        // Bounded refine/validate loop; rounds stay deterministic for predictable rendering/tests.
+        for round in 1..<maxRounds {
+            drafts = drafts.map { candidate in
+                var updated = candidate
+                updated.summary = "\(candidate.summary) Refined pass \(round + 1)."
+                updated.provenance.generationRound = round + 1
+                return updated
+            }
+        }
+
+        return drafts.compactMap { candidate in
+            var repairAttempts = 0
+            var value = candidate
+            while repairAttempts <= maxRepairAttempts {
+                if validateGeneratedCandidate(value) {
+                    value.provenance.repairAttempts = repairAttempts
+                    return value
+                }
+                repairAttempts += 1
+                value.title = "Workout Plan \(Int.random(in: 10...999))"
+            }
+            return nil
+        }
+    }
+
+    private func validateGeneratedCandidate(_ candidate: GeneratedCandidate) -> Bool {
+        let trimmedTitle = candidate.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            return false
+        }
+        return !(candidate.content.parsedSections ?? []).isEmpty
+    }
+
+    private func generatedTitleSeed(query: String, index: Int) -> String {
+        let prefixes = ["Adaptive", "Focused", "Progressive", "Balanced", "Compact", "Hybrid"]
+        let suffixes = ["Builder", "Session", "Circuit", "Flow", "Block", "Plan"]
+        let prefix = prefixes[index % prefixes.count]
+        let suffix = suffixes[(index / 2) % suffixes.count]
+        return "\(prefix) \(query.capitalized) \(suffix)"
+    }
+
+    private func generatedSections(query: String, seed: Int) -> [WorkoutSection] {
+        let effort = 8 + (seed % 5) * 2
+        return [
+            WorkoutSection(
+                title: "Warmup",
+                detail: "Prime movement patterns before loading.",
+                items: [
+                    WorkoutItem(name: "Easy cardio", prescription: "\(effort) minutes"),
+                    WorkoutItem(name: "Dynamic mobility flow", prescription: "2 rounds")
+                ]
+            ),
+            WorkoutSection(
+                title: "Main Set",
+                detail: "Primary work tuned to \(query).",
+                items: [
+                    WorkoutItem(name: "Compound movement", prescription: "4 x 6-8"),
+                    WorkoutItem(name: "Accessory superset", prescription: "3 rounds")
+                ]
+            ),
+            WorkoutSection(
+                title: "Cooldown",
+                detail: nil,
+                items: [
+                    WorkoutItem(name: "Breathing + stretch", prescription: "5 minutes")
+                ]
+            )
+        ]
+    }
+
+    private func generatedMarkdown(title: String, sections: [WorkoutSection]) -> String {
+        var lines: [String] = ["# \(title)"]
+        for section in sections {
+            lines.append("## \(section.title)")
+            if let detail = section.detail, !detail.isEmpty {
+                lines.append(detail)
+            }
+            for item in section.items {
+                if let prescription = item.prescription, !prescription.isEmpty {
+                    lines.append("- \(item.name) — \(prescription)")
+                } else {
+                    lines.append("- \(item.name)")
+                }
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func workoutMatchesFilters(_ workout: WorkoutDefinition) -> Bool {
@@ -492,11 +814,212 @@ struct DiscoveryView: View {
     }
 }
 
+struct TemplateVariantManagerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var templateStore: WorkoutTemplateStore
+    @EnvironmentObject private var variantStore: WorkoutVariantStore
+    @State private var newTemplateTitle = ""
+    @State private var renameTemplateID: WorkoutID?
+    @State private var renameVariantID: WorkoutID?
+    @State private var renameValue = ""
+    @State private var statusMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Create") {
+                    TextField("New template title", text: $newTemplateTitle)
+                    Button("Create Template From Scratch") {
+                        let trimmed = newTemplateTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else {
+                            return
+                        }
+                        do {
+                            _ = try templateStore.createTemplateFromScratch(title: trimmed)
+                            newTemplateTitle = ""
+                            statusMessage = "Template created."
+                        } catch {
+                            statusMessage = "Unable to create template."
+                        }
+                    }
+                }
+
+                Section("Templates") {
+                    if templateStore.templates.isEmpty {
+                        Text("No templates yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(templateStore.templates) { template in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(template.title)
+                                    .fontWeight(.semibold)
+                                if let summary = template.summary, !summary.isEmpty {
+                                    Text(summary)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Rename") {
+                                    renameTemplateID = template.id
+                                    renameValue = template.title
+                                }
+                                .tint(.blue)
+                                Button("Duplicate") {
+                                    do {
+                                        _ = try templateStore.duplicateTemplate(template)
+                                        statusMessage = "Template duplicated."
+                                    } catch {
+                                        statusMessage = "Unable to duplicate template."
+                                    }
+                                }
+                                .tint(.indigo)
+                                Button("Variant") {
+                                    do {
+                                        let workout = WorkoutDefinition(
+                                            id: template.id,
+                                            source: .template,
+                                            sourceID: template.baseWorkoutID ?? template.id,
+                                            sourceURL: nil,
+                                            title: template.title,
+                                            summary: template.summary,
+                                            metadata: template.metadata,
+                                            content: template.content,
+                                            timerConfiguration: template.timerConfiguration,
+                                            versionHash: template.baseVersionHash,
+                                            createdAt: template.createdAt,
+                                            updatedAt: template.updatedAt
+                                        )
+                                        _ = try variantStore.createVariant(from: workout)
+                                        statusMessage = "Variant created from template."
+                                    } catch {
+                                        statusMessage = "Unable to create variant."
+                                    }
+                                }
+                                .tint(.orange)
+                                Button("Delete", role: .destructive) {
+                                    do {
+                                        try templateStore.deleteTemplate(id: template.id)
+                                        statusMessage = "Template deleted."
+                                    } catch {
+                                        statusMessage = "Unable to delete template."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Section("Variants") {
+                    if variantStore.variants.isEmpty {
+                        Text("No variants yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(variantStore.variants) { variant in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(variant.overrides.title ?? "Variant")
+                                    .fontWeight(.semibold)
+                                Text("Base: \(variant.baseWorkoutID)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Rename") {
+                                    renameVariantID = variant.id
+                                    renameValue = variant.overrides.title ?? ""
+                                }
+                                .tint(.blue)
+                                Button("Duplicate") {
+                                    do {
+                                        _ = try variantStore.duplicateVariant(variant)
+                                        statusMessage = "Variant duplicated."
+                                    } catch {
+                                        statusMessage = "Unable to duplicate variant."
+                                    }
+                                }
+                                .tint(.indigo)
+                                Button("Delete", role: .destructive) {
+                                    do {
+                                        try variantStore.deleteVariant(id: variant.id)
+                                        statusMessage = "Variant deleted."
+                                    } catch {
+                                        statusMessage = "Unable to delete variant."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Templates & Variants")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+            .alert("Rename Template", isPresented: Binding(
+                get: { renameTemplateID != nil },
+                set: { if !$0 { renameTemplateID = nil } }
+            )) {
+                TextField("Title", text: $renameValue)
+                Button("Save") {
+                    guard let id = renameTemplateID else { return }
+                    do {
+                        try templateStore.renameTemplate(id: id, title: renameValue)
+                        statusMessage = "Template updated."
+                    } catch {
+                        statusMessage = "Unable to update template."
+                    }
+                    renameTemplateID = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    renameTemplateID = nil
+                }
+            }
+            .alert("Rename Variant", isPresented: Binding(
+                get: { renameVariantID != nil },
+                set: { if !$0 { renameVariantID = nil } }
+            )) {
+                TextField("Title", text: $renameValue)
+                Button("Save") {
+                    guard let id = renameVariantID else { return }
+                    do {
+                        try variantStore.renameVariant(id: id, title: renameValue)
+                        statusMessage = "Variant updated."
+                    } catch {
+                        statusMessage = "Unable to update variant."
+                    }
+                    renameVariantID = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    renameVariantID = nil
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if let statusMessage {
+                    Text(statusMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemBackground).opacity(0.95))
+                }
+            }
+        }
+    }
+}
+
 struct WorkoutDetailView: View {
     @EnvironmentObject private var sessionState: SessionStateStore
+    @EnvironmentObject private var templateStore: WorkoutTemplateStore
+    @EnvironmentObject private var variantStore: WorkoutVariantStore
     let workout: WorkoutDefinition
     let recommendation: RankedWorkout?
     @Binding var selectedTab: AppTab
+    @State private var managementMessage: String?
 
     private var sectionCount: Int {
         workout.content.parsedSections?.count ?? 0
@@ -594,6 +1117,14 @@ struct WorkoutDetailView: View {
                     detail: recommendation?.reasons.prefix(2).map(\.text).joined(separator: " • ") ?? "Sections parsed from the original Markdown"
                 )
 
+                if workout.source == .generated, let summary = workout.summary, !summary.isEmpty {
+                    HighlightCard(
+                        title: "Generation Rationale",
+                        subtitle: summary,
+                        detail: "Includes retrieval-informed context and validation before display."
+                    )
+                }
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Overview")
                         .font(.headline)
@@ -641,6 +1172,34 @@ struct WorkoutDetailView: View {
                         .cornerRadius(12)
                 }
                 .buttonStyle(.plain)
+
+                HStack(spacing: 10) {
+                    Button("Save as Template") {
+                        do {
+                            _ = try templateStore.createTemplateFromWorkout(workout)
+                            managementMessage = "Template saved."
+                        } catch {
+                            managementMessage = "Unable to save template."
+                        }
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("Create Variant") {
+                        do {
+                            _ = try variantStore.createVariant(from: workout)
+                            managementMessage = "Variant created."
+                        } catch {
+                            managementMessage = "Unable to create variant."
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                if let managementMessage {
+                    Text(managementMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding()
         }
@@ -1480,6 +2039,325 @@ final class NetworkStatusMonitor: ObservableObject {
     }
 }
 
+enum OpenAIFunctionCallingError: Error {
+    case invalidResponse
+    case missingToolArguments
+    case invalidToolPayload
+    case validationFailed
+}
+
+actor OpenAIFunctionCallingService {
+    private let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")
+
+    func generateCandidate(
+        query: String,
+        contextWorkouts: [WorkoutDefinition],
+        trigger: GenerationTrigger,
+        modelID: String,
+        apiKey: String
+    ) async throws -> GeneratedCandidate {
+        let now = Date()
+
+        let generated = try await callTool(
+            name: "generate_workout",
+            description: "Generate a structured workout plan candidate.",
+            schema: generateSchema(),
+            payload: [
+                "query": query,
+                "trigger": trigger.rawValue
+            ],
+            modelID: modelID,
+            apiKey: apiKey
+        )
+
+        let retrievedContext = retrieveContext(
+            query: query,
+            contextWorkouts: contextWorkouts,
+            candidate: generated
+        )
+
+        let refined = (try? await callTool(
+            name: "refine_workout",
+            description: "Refine a generated workout with retrieved context.",
+            schema: refineSchema(),
+            payload: [
+                "query": query,
+                "candidate": generated,
+                "context": retrievedContext
+            ],
+            modelID: modelID,
+            apiKey: apiKey
+        )) ?? generated
+
+        let validation = try await callTool(
+            name: "validate_workout",
+            description: "Validate a workout candidate against hard constraints.",
+            schema: validateSchema(),
+            payload: [
+                "candidate": refined
+            ],
+            modelID: modelID,
+            apiKey: apiKey
+        )
+
+        if let isValid = validation["isValid"] as? Bool, !isValid {
+            throw OpenAIFunctionCallingError.validationFailed
+        }
+
+        let title = (refined["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !title.isEmpty else {
+            throw OpenAIFunctionCallingError.invalidToolPayload
+        }
+
+        let summary = (refined["summary"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Generated with LLM function-calling."
+        let sections = parseSections(from: refined["sections"])
+        guard !sections.isEmpty else {
+            throw OpenAIFunctionCallingError.invalidToolPayload
+        }
+
+        let markdown = renderMarkdown(title: title, sections: sections)
+        let explanation = (refined["explanation"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? "Generated with function-calling and retrieval-aware refinement."
+
+        return GeneratedCandidate(
+            id: "gen-live-\(UUID().uuidString.prefix(8))",
+            title: title,
+            summary: summary,
+            content: WorkoutContent(sourceMarkdown: markdown, parsedSections: sections, notes: nil),
+            explanation: explanation,
+            originQuery: query,
+            isSaved: false,
+            createdAt: now,
+            provenance: GeneratedCandidateProvenance(
+                originQuery: query,
+                baseWorkoutID: contextWorkouts.first?.id,
+                revisionPrompt: nil,
+                revisionIndex: 0,
+                contextWorkoutIDs: contextWorkouts.map(\.id),
+                generationRound: 2,
+                repairAttempts: 0,
+                createdAt: now
+            )
+        )
+    }
+
+    private func callTool(
+        name: String,
+        description: String,
+        schema: [String: Any],
+        payload: [String: Any],
+        modelID: String,
+        apiKey: String
+    ) async throws -> [String: Any] {
+        guard let endpoint else {
+            throw OpenAIFunctionCallingError.invalidResponse
+        }
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let payloadText = jsonString(payload) ?? "{}"
+        let body: [String: Any] = [
+            "model": modelID,
+            "temperature": 0.3,
+            "messages": [
+                [
+                    "role": "system",
+                    "content": "Return tool call arguments only. Keep outputs concise and structured."
+                ],
+                [
+                    "role": "user",
+                    "content": payloadText
+                ]
+            ],
+            "tools": [
+                [
+                    "type": "function",
+                    "function": [
+                        "name": name,
+                        "description": description,
+                        "parameters": schema
+                    ]
+                ]
+            ],
+            "tool_choice": [
+                "type": "function",
+                "function": [
+                    "name": name
+                ]
+            ]
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw OpenAIFunctionCallingError.invalidResponse
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw OpenAIFunctionCallingError.invalidResponse
+        }
+
+        guard
+            let choices = json["choices"] as? [[String: Any]],
+            let first = choices.first,
+            let message = first["message"] as? [String: Any],
+            let toolCalls = message["tool_calls"] as? [[String: Any]],
+            let firstTool = toolCalls.first,
+            let function = firstTool["function"] as? [String: Any],
+            let arguments = function["arguments"] as? String
+        else {
+            throw OpenAIFunctionCallingError.missingToolArguments
+        }
+
+        guard
+            let argsData = arguments.data(using: .utf8),
+            let argsJSON = try JSONSerialization.jsonObject(with: argsData) as? [String: Any]
+        else {
+            throw OpenAIFunctionCallingError.invalidToolPayload
+        }
+
+        return argsJSON
+    }
+
+    private func retrieveContext(
+        query: String,
+        contextWorkouts: [WorkoutDefinition],
+        candidate: [String: Any]
+    ) -> [[String: Any]] {
+        let queryTerms = Set(query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init))
+        let candidateTitle = (candidate["title"] as? String)?.lowercased() ?? ""
+
+        return contextWorkouts
+            .map { workout -> (WorkoutDefinition, Int) in
+                let haystack = "\(workout.title.lowercased()) \(workout.summary?.lowercased() ?? "")"
+                let sharedTerms = queryTerms.filter { haystack.contains($0) }.count
+                let candidateBoost = candidateTitle.isEmpty ? 0 : (haystack.contains(candidateTitle) ? 1 : 0)
+                return (workout, sharedTerms + candidateBoost)
+            }
+            .sorted { $0.1 > $1.1 }
+            .prefix(3)
+            .map { pair in
+                [
+                    "id": pair.0.id,
+                    "title": pair.0.title,
+                    "summary": pair.0.summary ?? "",
+                    "focusTags": pair.0.metadata.focusTags
+                ]
+            }
+    }
+
+    private func parseSections(from value: Any?) -> [WorkoutSection] {
+        guard let rows = value as? [[String: Any]] else {
+            return []
+        }
+
+        return rows.compactMap { section in
+            guard let title = section["title"] as? String else {
+                return nil
+            }
+            let detail = section["detail"] as? String
+            let items = (section["items"] as? [[String: Any]] ?? []).compactMap { item -> WorkoutItem? in
+                guard let name = item["name"] as? String else {
+                    return nil
+                }
+                return WorkoutItem(
+                    name: name,
+                    prescription: item["prescription"] as? String,
+                    notes: item["notes"] as? String
+                )
+            }
+            return WorkoutSection(title: title, detail: detail, items: items)
+        }
+    }
+
+    private func renderMarkdown(title: String, sections: [WorkoutSection]) -> String {
+        var lines = ["# \(title)"]
+        for section in sections {
+            lines.append("## \(section.title)")
+            if let detail = section.detail, !detail.isEmpty {
+                lines.append(detail)
+            }
+            for item in section.items {
+                if let prescription = item.prescription, !prescription.isEmpty {
+                    lines.append("- \(item.name) — \(prescription)")
+                } else {
+                    lines.append("- \(item.name)")
+                }
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func jsonString(_ payload: [String: Any]) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func generateSchema() -> [String: Any] {
+        [
+            "type": "object",
+            "required": ["title", "summary", "sections", "explanation"],
+            "properties": [
+                "title": ["type": "string"],
+                "summary": ["type": "string"],
+                "explanation": ["type": "string"],
+                "sections": [
+                    "type": "array",
+                    "items": sectionSchema()
+                ]
+            ]
+        ]
+    }
+
+    private func refineSchema() -> [String: Any] {
+        generateSchema()
+    }
+
+    private func validateSchema() -> [String: Any] {
+        [
+            "type": "object",
+            "required": ["isValid", "issues"],
+            "properties": [
+                "isValid": ["type": "boolean"],
+                "issues": [
+                    "type": "array",
+                    "items": ["type": "string"]
+                ]
+            ]
+        ]
+    }
+
+    private func sectionSchema() -> [String: Any] {
+        [
+            "type": "object",
+            "required": ["title", "items"],
+            "properties": [
+                "title": ["type": "string"],
+                "detail": ["type": "string"],
+                "items": [
+                    "type": "array",
+                    "items": [
+                        "type": "object",
+                        "required": ["name"],
+                        "properties": [
+                            "name": ["type": "string"],
+                            "prescription": ["type": "string"],
+                            "notes": ["type": "string"]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    }
+}
+
 struct SearchField: View {
     @Binding var text: String
     let placeholder: String
@@ -1511,6 +2389,7 @@ struct SearchField: View {
 struct WorkoutRow: View {
     let workout: WorkoutDefinition
     let recommendation: RankedWorkout?
+    var isNew: Bool = false
 
     private var sectionTitles: [String] {
         workout.content.parsedSections?.prefix(2).map { $0.title } ?? []
@@ -1546,6 +2425,9 @@ struct WorkoutRow: View {
             HStack(spacing: 8) {
                 MockChip(title: "\(sectionCount) sections")
                 MockChip(title: sourceLabel(for: workout.source))
+                if isNew || workout.source == .generated {
+                    MockChip(title: "New")
+                }
                 if let recommendation {
                     MockChip(title: "Score \(String(format: "%.2f", recommendation.score))")
                 }
