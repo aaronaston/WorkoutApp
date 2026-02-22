@@ -2,6 +2,11 @@
 
 This document uses TOGAF domains as the organizing structure and C4-style decomposition for system detail.
 
+## Diagram Index
+- [Primary Flow: Workout Tracking + Sync Timeline](primary-flow-workout-tracking-sync-timeline.md)
+- [C4 Component Diagram: Workout Session + Sync Boundaries](c4-component-workout-session-sync-boundaries.md)
+- [Deployment View: Device-only and Device + Backend Topology](deployment-view-device-and-backend-topology.md)
+
 ## Business Architecture
 
 ### System Context
