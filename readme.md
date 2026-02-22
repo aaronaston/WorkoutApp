@@ -49,17 +49,28 @@ npm install -g markdownlint-cli cspell
 ```
 
 ## Run in Simulator (CLI)
-Use a generic iPhone simulator (first available iPhone), build, install, and launch:
+
+Recommended bootstrap command:
 
 ```bash
-UDID=$(xcrun simctl list devices available | rg -m1 "iPhone" | sed -E 's/.*\\(([0-9A-F-]+)\\).*/\\1/')
-xcrun simctl boot "$UDID" || true
-open -a Simulator
-
-xcodebuild -project ios/WorkoutApp/WorkoutApp.xcodeproj -scheme WorkoutApp -sdk iphonesimulator -configuration Debug -derivedDataPath /tmp/WorkoutAppDerived
-xcrun simctl install "$UDID" /tmp/WorkoutAppDerived/Build/Products/Debug-iphonesimulator/WorkoutApp.app
-xcrun simctl launch "$UDID" ca.twisted-pair.WorkoutApp
+scripts/ios-sim.sh run
 ```
+
+Run tests with the same simulator-safe settings:
+
+```bash
+scripts/ios-sim.sh test
+```
+
+Optional flags:
+
+```bash
+scripts/ios-sim.sh run --device-name "iPhone 16 Pro"
+scripts/ios-sim.sh test --device-id <simulator-udid>
+```
+
+The script uses an arm64 simulator destination and excludes `x86_64`, which avoids the
+`Unable to find module dependency: 'Markdown'` issue seen on mixed-arch simulator builds.
 
 ### 1) Workout Discovery (Primary Screen)
 **Goal:** Present good workout options for “today” based on history, context, preferences, and available sources.

@@ -11,9 +11,58 @@ struct SessionDraft: Codable, Hashable {
     var workout: WorkoutDefinition
     var startedAt: Date
     var endedAt: Date?
+    var pausedAt: Date?
+    var accumulatedPauseSeconds: TimeInterval
     var notes: String?
     var phase: SessionPhase
     var savedAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case workout
+        case startedAt
+        case endedAt
+        case pausedAt
+        case accumulatedPauseSeconds
+        case notes
+        case phase
+        case savedAt
+    }
+
+    init(
+        id: UUID,
+        workout: WorkoutDefinition,
+        startedAt: Date,
+        endedAt: Date?,
+        pausedAt: Date?,
+        accumulatedPauseSeconds: TimeInterval,
+        notes: String?,
+        phase: SessionPhase,
+        savedAt: Date
+    ) {
+        self.id = id
+        self.workout = workout
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.pausedAt = pausedAt
+        self.accumulatedPauseSeconds = accumulatedPauseSeconds
+        self.notes = notes
+        self.phase = phase
+        self.savedAt = savedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        workout = try container.decode(WorkoutDefinition.self, forKey: .workout)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        endedAt = try container.decodeIfPresent(Date.self, forKey: .endedAt)
+        pausedAt = try container.decodeIfPresent(Date.self, forKey: .pausedAt)
+        accumulatedPauseSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .accumulatedPauseSeconds) ?? 0
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        phase = try container.decode(SessionPhase.self, forKey: .phase)
+        savedAt = try container.decode(Date.self, forKey: .savedAt)
+    }
 }
 
 struct ActiveSession: Hashable {
@@ -21,7 +70,33 @@ struct ActiveSession: Hashable {
     let workout: WorkoutDefinition
     let startedAt: Date
     var endedAt: Date?
+    var pausedAt: Date?
+    var accumulatedPauseSeconds: TimeInterval
     var notes: String?
+
+    var isPaused: Bool {
+        pausedAt != nil
+    }
+
+    mutating func pause(at date: Date = Date()) {
+        guard pausedAt == nil else { return }
+        pausedAt = date
+    }
+
+    mutating func resume(at date: Date = Date()) {
+        guard let pausedAt else { return }
+        accumulatedPauseSeconds += max(0, date.timeIntervalSince(pausedAt))
+        self.pausedAt = nil
+    }
+
+    func elapsedSeconds(at date: Date = Date()) -> Int {
+        let effectiveEnd = endedAt ?? date
+        var elapsed = effectiveEnd.timeIntervalSince(startedAt) - accumulatedPauseSeconds
+        if let pausedAt {
+            elapsed -= max(0, effectiveEnd.timeIntervalSince(pausedAt))
+        }
+        return max(0, Int(elapsed))
+    }
 }
 
 @MainActor
@@ -40,13 +115,22 @@ final class SessionStateStore: ObservableObject {
 
     func startSession(workout: WorkoutDefinition, at date: Date = Date()) {
         guard phase != .started else { return }
-        activeSession = ActiveSession(id: UUID(), workout: workout, startedAt: date)
+        activeSession = ActiveSession(
+            id: UUID(),
+            workout: workout,
+            startedAt: date,
+            endedAt: nil,
+            pausedAt: nil,
+            accumulatedPauseSeconds: 0,
+            notes: nil
+        )
         phase = .started
         persistDraftIfNeeded()
     }
 
     func endSession(at date: Date = Date(), notes: String? = nil) {
         guard var session = activeSession else { return }
+        session.resume(at: date)
         session.endedAt = date
         session.notes = notes
 
@@ -58,7 +142,7 @@ final class SessionStateStore: ObservableObject {
             versionHash: workout.versionHash
         )
 
-        let durationSeconds = max(0, Int(date.timeIntervalSince(session.startedAt)))
+        let durationSeconds = session.elapsedSeconds(at: date)
 
         let completed = WorkoutSession(
             id: session.id,
@@ -95,6 +179,25 @@ final class SessionStateStore: ObservableObject {
         draftStore.clearDraft()
     }
 
+    func pauseSession(at date: Date = Date()) {
+        guard var session = activeSession, !session.isPaused else { return }
+        session.pause(at: date)
+        activeSession = session
+        persistDraftIfNeeded()
+    }
+
+    func resumeSession(at date: Date = Date()) {
+        guard var session = activeSession, session.isPaused else { return }
+        session.resume(at: date)
+        activeSession = session
+        persistDraftIfNeeded()
+    }
+
+    func currentElapsedSeconds(at date: Date = Date()) -> Int? {
+        guard let session = activeSession else { return nil }
+        return session.elapsedSeconds(at: date)
+    }
+
     func persistDraftIfNeeded() {
         guard phase == .started, let session = activeSession else {
             return
@@ -104,6 +207,8 @@ final class SessionStateStore: ObservableObject {
             workout: session.workout,
             startedAt: session.startedAt,
             endedAt: session.endedAt,
+            pausedAt: session.pausedAt,
+            accumulatedPauseSeconds: session.accumulatedPauseSeconds,
             notes: session.notes,
             phase: phase,
             savedAt: Date()
@@ -123,6 +228,8 @@ final class SessionStateStore: ObservableObject {
             workout: draft.workout,
             startedAt: draft.startedAt,
             endedAt: draft.endedAt,
+            pausedAt: draft.pausedAt,
+            accumulatedPauseSeconds: draft.accumulatedPauseSeconds,
             notes: draft.notes
         )
         phase = .started

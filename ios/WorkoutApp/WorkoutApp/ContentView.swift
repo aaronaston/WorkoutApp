@@ -31,7 +31,7 @@ struct ContentView: View {
             .tag(AppTab.session)
 
             NavigationStack {
-                HistoryView()
+                HistoryView(selectedTab: $selectedTab)
             }
             .tabItem {
                 Label("History", systemImage: "chart.bar")
@@ -665,6 +665,9 @@ struct WorkoutDetailView: View {
 
 struct SessionView: View {
     @EnvironmentObject private var sessionState: SessionStateStore
+    @State private var showDiscardShortSessionPrompt = false
+
+    private let shortSessionDiscardThresholdSeconds = 5 * 60
 
     var body: some View {
         ScrollView {
@@ -680,11 +683,11 @@ struct SessionView: View {
                     }
 
                     TimelineView(.periodic(from: Date(), by: 1.0)) { context in
-                        let elapsed = max(0, Int(context.date.timeIntervalSince(session.startedAt)))
+                        let elapsed = session.elapsedSeconds(at: context.date)
                         HighlightCard(
                             title: "Session Timer",
                             subtitle: formattedDuration(elapsed),
-                            detail: "Overall workout duration"
+                            detail: session.isPaused ? "Paused" : "Overall workout duration"
                         )
                     }
 
@@ -702,13 +705,45 @@ struct SessionView: View {
                         }
                     }
 
+                    HStack(spacing: 12) {
+                        Button {
+                            if session.isPaused {
+                                sessionState.resumeSession()
+                            } else {
+                                sessionState.pauseSession()
+                            }
+                        } label: {
+                            Text(session.isPaused ? "Resume Session" : "Pause Session")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.orange.opacity(0.15))
+                                .cornerRadius(12)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(role: .destructive) {
+                            if session.elapsedSeconds() < shortSessionDiscardThresholdSeconds {
+                                showDiscardShortSessionPrompt = true
+                            } else {
+                                sessionState.endSession()
+                            }
+                        } label: {
+                            Text("End Session")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.red.opacity(0.15))
+                                .cornerRadius(12)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     Button(role: .destructive) {
-                        sessionState.endSession()
+                        sessionState.cancelSession()
                     } label: {
-                        Text("End Session")
+                        Text("Cancel Session")
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.red.opacity(0.15))
+                            .background(Color.red.opacity(0.08))
                             .cornerRadius(12)
                     }
                     .buttonStyle(.plain)
@@ -728,12 +763,34 @@ struct SessionView: View {
             .padding()
         }
         .navigationTitle("Session")
+        .confirmationDialog(
+            "Discard short session?",
+            isPresented: $showDiscardShortSessionPrompt,
+            titleVisibility: .visible
+        ) {
+            Button("Save to History") {
+                sessionState.endSession()
+            }
+            Button("Discard Session", role: .destructive) {
+                sessionState.cancelSession()
+            }
+            Button("Keep Working Out", role: .cancel) {}
+        } message: {
+            Text("This session is under 5 minutes. Save it anyway or discard it?")
+        }
     }
 
 }
 
 struct HistoryView: View {
+    @EnvironmentObject private var sessionState: SessionStateStore
     @EnvironmentObject private var sessionStore: WorkoutSessionStore
+    @Binding var selectedTab: AppTab
+    @State private var workoutLookup: [WorkoutID: WorkoutDefinition] = [:]
+
+    init(selectedTab: Binding<AppTab>) {
+        _selectedTab = selectedTab
+    }
 
     private var sessions: [WorkoutSession] {
         sessionStore.sessions.sorted { sessionDate(for: $0) > sessionDate(for: $1) }
@@ -778,9 +835,17 @@ struct HistoryView: View {
                     Section(header: Text("This Week Sessions")) {
                         ForEach(thisWeek) { session in
                             NavigationLink {
-                                SessionDetailView(session: session)
+                                SessionDetailView(session: session) {
+                                    startAgain(session)
+                                }
                             } label: {
                                 SessionRow(session: session)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Again") {
+                                    startAgain(session)
+                                }
+                                .tint(.accentColor)
                             }
                         }
                     }
@@ -790,9 +855,17 @@ struct HistoryView: View {
                     Section(header: Text("Earlier Sessions")) {
                         ForEach(earlier) { session in
                             NavigationLink {
-                                SessionDetailView(session: session)
+                                SessionDetailView(session: session) {
+                                    startAgain(session)
+                                }
                             } label: {
                                 SessionRow(session: session)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Again") {
+                                    startAgain(session)
+                                }
+                                .tint(.accentColor)
                             }
                         }
                     }
@@ -800,6 +873,9 @@ struct HistoryView: View {
             }
         }
         .navigationTitle("History")
+        .task {
+            await loadWorkoutLookupIfNeeded()
+        }
     }
 
     private func sessionDate(for session: WorkoutSession) -> Date {
@@ -812,6 +888,52 @@ struct HistoryView: View {
         }
         guard let endedAt = session.endedAt else { return 0 }
         return Int(round(endedAt.timeIntervalSince(session.startedAt) / 60.0))
+    }
+
+    private func startAgain(_ session: WorkoutSession) {
+        let workout = resolveWorkout(for: session)
+        sessionState.startSession(workout: workout)
+        selectedTab = .session
+    }
+
+    private func resolveWorkout(for session: WorkoutSession) -> WorkoutDefinition {
+        if let knownWorkout = workoutLookup[session.workout.id] {
+            return knownWorkout
+        }
+        return WorkoutDefinition(
+            id: session.workout.id,
+            source: session.workout.source,
+            sourceID: session.workout.id,
+            sourceURL: nil,
+            title: session.workout.title,
+            summary: nil,
+            metadata: WorkoutMetadata(
+                durationMinutes: nil,
+                focusTags: [],
+                equipmentTags: [],
+                locationTag: nil,
+                otherTags: []
+            ),
+            content: WorkoutContent(
+                sourceMarkdown: "",
+                parsedSections: nil,
+                notes: nil
+            ),
+            timerConfiguration: nil,
+            versionHash: session.workout.versionHash,
+            createdAt: nil,
+            updatedAt: nil
+        )
+    }
+
+    private func loadWorkoutLookupIfNeeded() async {
+        guard workoutLookup.isEmpty else { return }
+        do {
+            let workouts = try KnowledgeBaseLoader().loadWorkouts()
+            workoutLookup = Dictionary(uniqueKeysWithValues: workouts.map { ($0.id, $0) })
+        } catch {
+            workoutLookup = [:]
+        }
     }
 }
 
@@ -850,6 +972,7 @@ struct SessionRow: View {
 
 struct SessionDetailView: View {
     let session: WorkoutSession
+    var onStartAgain: (() -> Void)? = nil
 
     private var completedDate: Date {
         session.endedAt ?? session.startedAt
@@ -883,6 +1006,19 @@ struct SessionDetailView: View {
                     subtitle: durationText,
                     detail: "Total time captured"
                 )
+
+                if let onStartAgain {
+                    Button {
+                        onStartAgain()
+                    } label: {
+                        Text("Start This Workout Again")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.accentColor.opacity(0.15))
+                            .cornerRadius(12)
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 if let notes = session.notes, !notes.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {

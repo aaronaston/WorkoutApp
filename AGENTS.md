@@ -1,206 +1,119 @@
 # Agent Instructions
 
-## Issue Tracking
+## Tracking System
 
-This project uses **bd (beads)** for issue tracking.
-Run `bd prime` for workflow context, or install hooks (`bd hooks install`) for auto-injection.
+This repo now uses GitHub Issues + GitHub Projects for task tracking.
+Do not use `bd` / Beads for new work.
 
-**Quick reference:**
-- `bd ready` - Find unblocked work
-- `bd create "Title" --type task --priority 2` - Create issue
-- `bd close <id>` - Complete work
-- `bd sync` - Sync with git (run at session end)
+Legacy Beads files may still exist for historical context, but they are read-only.
 
-For full workflow details: `bd prime`
+## Quick Reference
 
-## Multi-Agent Workflow (Git Worktrees + Merge Slots)
+- Find ready work: `gh issue list --state open --label "status:ready"`
+- View issue details: `gh issue view <number>`
+- Start work: assign yourself + set status labels
+- Close work: `gh issue close <number> --comment "Completed in <commit-or-pr>"`
 
-**Goal:** isolate code changes per agent while sharing the same Beads database.
+Recommended labels:
 
-**Rules:**
+- Type: `type:feature`, `type:bug`, `type:task`
+- Priority: `priority:P0`, `priority:P1`, `priority:P2`, `priority:P3`, `priority:P4`
+- Status: `status:ready`, `status:in-progress`, `status:blocked`
+
+## GitHub Workflow Norms
+
+- One issue per branch when practical.
+- Branch naming: `<agent>/<issue-or-scope>` (example: `agent-a/123-hybrid-retrieval`).
+- Link issue in commits/PRs using `#<issue-number>`.
+- Record blockers directly on the issue and apply `status:blocked`.
+- Track sequencing with issue links and explicit `Depends on #<issue>` in issue body.
+
+## Multi-Agent Workflow (Git Worktrees)
+
+Goal: isolate agent changes while coordinating integration to `main`.
+
+Rules:
+
 - Do not work in the main worktree except for integration tasks.
-- Each agent uses their own git worktree directory.
-- Use `bd merge-slot` to serialize landing to `main`.
-- Treat `main` as the sync target for `.beads/issues.jsonl` (no separate sync branch).
+- Each agent uses its own worktree under `.worktrees/`.
+- One integrator lands to `main` at a time (manual serialization).
 
-**One-time setup (run from repo root):**
+One-time setup (from repo root):
 
 ```bash
 git worktree add .worktrees/agent-a
 git worktree add .worktrees/agent-b
 ```
 
-**One-time merge-slot setup (run once per rig):**
+Agent bootstrap (recommended):
 
 ```bash
-bd merge-slot create
+scripts/agent-bootstrap.sh agent-a 123
 ```
 
-This creates `<prefix>-merge-slot` (label `gt:slot`) used to serialize merges.
-
-**Agent bootstrap (recommended):**
-
-```bash
-scripts/agent-bootstrap.sh agent-a bd-1234
-```
-
-**Per-agent daily flow:**
+Per-agent daily flow:
 
 ```bash
 cd .worktrees/agent-a
-source .bd-env           # sets BD_ACTOR=agent-a (or export BD_ACTOR=agent-a)
-bd ready
-bd slot set "$BD_ACTOR" role active   # optional: mark active agent
-git checkout -b agent-a/<issue>
-# work, commit locally
+source .agent-env
+gh issue view "$ISSUE_REF"
+git status
+# work, test, commit
+git push -u origin "$(git branch --show-current)"
 ```
 
-**Safety checks (run anytime if unsure):**
+Safety checks:
 
 ```bash
-git worktree list            # verify you're in a non-main worktree
+git worktree list
+git status -sb
 ```
 
-**Landing (serialized):**
+## Integration to Main (No PR, Same Machine)
+
+Coordination rule: before integrating, confirm no other agent is currently integrating.
+
+From agent worktree:
 
 ```bash
-bd merge-slot check         # verify slot exists/availability
-bd merge-slot acquire --holder "$BD_ACTOR"
-git pull --rebase
-git push
-bd merge-slot release --holder "$BD_ACTOR"
-```
-
-### Current status (2026-02-19): merge-slot acquire/release bug
-- `bd merge-slot acquire` currently fails in this repo with:
-  `failed to update issue: invalid field for update: holder`
-- Until fixed, do **not** rely on `bd merge-slot acquire/release`.
-- Fallback: serialize merges manually (one integrator at a time) using the local integration steps below.
-- Coordination rule: before integrating, confirm no other agent is actively integrating to `main`.
-
-**Local integration to main (no PR, same machine):**
-
-From agent worktree (your feature branch):
-
-```bash
-source .bd-env
-bd merge-slot check
-# merge-slot acquire is currently broken; coordinate manually, one integrator at a time
+git fetch origin
 git pull --rebase origin main
+# run tests/build locally
+git push
 ```
 
-From the main worktree (local main branch):
+From main worktree:
 
 ```bash
 git fetch origin
 git checkout main
 git pull --rebase origin main
-git merge --ff-only agent-a/<issue>
-bd sync
+git merge --ff-only agent-a/<issue-or-scope>
 git push origin main
 ```
 
-Then back in the agent worktree:
+Then announce integration complete so another agent can proceed.
 
-```bash
-# merge-slot release is currently broken; announce integration complete to other agents
-```
+## Session Completion Checklist
 
-**Command context (where to run what):**
+Work is not complete until changes are pushed and remote state is current.
 
-Assumptions:
-- You have a per-agent worktree (e.g. `.worktrees/agent-a`).
-- You ran `source .bd-env` in that worktree.
+1. Update issue status/notes in GitHub (`status:in-progress` -> remove + close issue when done).
+2. Run quality gates for changed code (tests/lint/build).
+3. `git status` (verify intended files only).
+4. `git add <files>` and commit.
+5. `git pull --rebase`.
+6. `git push`.
+7. `git status -sb` (confirm branch is up to date with `origin`).
+8. Leave handoff notes on the issue (what changed, risks, next steps).
 
-```text
-1) bd merge-slot check / acquire / release
-   - CWD: agent worktree (e.g. .worktrees/agent-a)
-   - Branch: agent-a/<issue>
-   - DB: uses BEADS_DB from .bd-env (shared main repo DB)
-   - NOTE: acquire/release currently fail with holder-field error; use manual serialization.
+Critical rules:
 
-2) git pull --rebase origin main
-   - CWD: agent worktree
-   - Branch: agent-a/<issue> (rebasing your branch on origin/main)
+- Never leave completed work unpushed.
+- If push fails, resolve and retry until push succeeds.
+- If follow-up work remains, open or update a GitHub issue before ending.
 
-3) bd sync
-   - CWD: main worktree
-   - Branch: main
-   - Writes: .beads/issues.jsonl to main
+## Bootstrap Source of Truth
 
-4) git push -u origin agent-a/<issue>
-   - CWD: agent worktree
-   - Branch: agent-a/<issue>
-
-5) Main worktree
-   - Use for final integration and bd sync.
-```
-
-**Cleanup when done (optional but recommended):**
-
-```bash
-git worktree remove .worktrees/agent-a
-git branch -d agent-a/<issue>
-git worktree prune
-```
-
-**Notes on worktree locations:**
-- Worktree working directories can live anywhere (this repo uses `.worktrees/`).
-- Git’s metadata for worktrees lives under `.git/worktrees/`.
-- Updates to `.beads/issues.jsonl` are shared across worktrees and will appear in the main repo’s `.beads/` directory by design.
-
-## Beads Data Model (DB vs JSONL vs Daemon)
-
-**Source of truth:** the SQLite DB at `.beads/beads.db` in the main repo root.  
-**Sync artifact:** `.beads/issues.jsonl` (exported from the DB and committed to `main`).  
-**Daemon:** a convenience layer that keeps the DB and JSONL fresh; it does not change the data model.
-
-**Recommended multi-agent setup (worktrees):**
-- Use a single shared DB (the main repo’s `.beads/beads.db`) from every worktree.
-- Set `BD_ACTOR` per agent for audit trail + merge-slot ownership.
-- Prefer direct mode in worktrees; run `bd sync` from the main worktree to keep `main` updated.
-
-**Suggested per-worktree `.bd-env`:**
-
-```bash
-export BD_ACTOR=agent-a
-export BEADS_DB=/Users/aaron/development/WorkoutApp/.beads/beads.db
-```
-
-**Why this matters:** if the DB path isn’t pinned, beads may auto-discover a different
-database per worktree or attach to a daemon started from the main repo, leading to
-surprising state. Pinning `BEADS_DB` keeps all agents in sync.
-
-## Codex Sandbox Note
-
-Beads may fail to start or lock under Codex sandboxing. Launch Codex with:
-`codex --ask-for-approval on-request --sandbox danger-full-access`
-to ensure bd works as expected.
-
-## Landing the Plane (Session Completion)
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds. Always run a build after any code change; build failures mean the task is not complete.
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+Put repo-specific process and norms in `AGENTS.md`.
+Use Codex Skills only when the same workflow must be reused across multiple repositories.

@@ -309,3 +309,96 @@ final class WorkoutAppInfoPlistTests: XCTestCase {
         XCTAssertNotNil(launchScreen)
     }
 }
+
+final class SessionStateStoreTests: XCTestCase {
+    private func makeWorkout(id: WorkoutID = "test-workout", title: String = "Test Workout") -> WorkoutDefinition {
+        WorkoutDefinition(
+            id: id,
+            source: .knowledgeBase,
+            sourceID: id,
+            sourceURL: nil,
+            title: title,
+            summary: nil,
+            metadata: WorkoutMetadata(
+                durationMinutes: nil,
+                focusTags: [],
+                equipmentTags: [],
+                locationTag: nil,
+                otherTags: []
+            ),
+            content: WorkoutContent(sourceMarkdown: "", parsedSections: nil, notes: nil),
+            timerConfiguration: nil,
+            versionHash: nil,
+            createdAt: nil,
+            updatedAt: nil
+        )
+    }
+
+    @MainActor
+    private func makeStores() -> (WorkoutSessionStore, SessionDraftStore, URL) {
+        let baseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WorkoutAppTests-\(UUID().uuidString)", isDirectory: true)
+        let sessionsURL = baseURL.appendingPathComponent("sessions.json")
+        let draftURL = baseURL.appendingPathComponent("draft.json")
+        let sessionStore = WorkoutSessionStore(fileURL: sessionsURL)
+        let draftStore = SessionDraftStore(fileURL: draftURL)
+        return (sessionStore, draftStore, baseURL)
+    }
+
+    @MainActor
+    func testCancelSessionDoesNotWriteHistory() throws {
+        let (sessionStore, draftStore, baseURL) = makeStores()
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let state = SessionStateStore(sessionStore: sessionStore, draftStore: draftStore)
+        state.startSession(workout: makeWorkout(), at: Date(timeIntervalSince1970: 100))
+        state.cancelSession()
+
+        XCTAssertEqual(state.phase, .idle)
+        XCTAssertNil(state.activeSession)
+        XCTAssertTrue(sessionStore.sessions.isEmpty)
+    }
+
+    @MainActor
+    func testPauseResumeExcludesPausedTimeFromCompletedDuration() throws {
+        let (sessionStore, draftStore, baseURL) = makeStores()
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let state = SessionStateStore(sessionStore: sessionStore, draftStore: draftStore)
+        let start = Date(timeIntervalSince1970: 0)
+        state.startSession(workout: makeWorkout(), at: start)
+        state.pauseSession(at: start.addingTimeInterval(120))
+        state.resumeSession(at: start.addingTimeInterval(300))
+        state.endSession(at: start.addingTimeInterval(600))
+
+        XCTAssertEqual(sessionStore.sessions.first?.durationSeconds, 420)
+    }
+
+    @MainActor
+    func testEndingWhilePausedCountsOnlyActiveTime() throws {
+        let (sessionStore, draftStore, baseURL) = makeStores()
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let state = SessionStateStore(sessionStore: sessionStore, draftStore: draftStore)
+        let start = Date(timeIntervalSince1970: 0)
+        state.startSession(workout: makeWorkout(), at: start)
+        state.pauseSession(at: start.addingTimeInterval(60))
+        state.endSession(at: start.addingTimeInterval(120))
+
+        XCTAssertEqual(sessionStore.sessions.first?.durationSeconds, 60)
+    }
+
+    @MainActor
+    func testElapsedTimeRemainsFixedWhilePaused() throws {
+        let (sessionStore, draftStore, baseURL) = makeStores()
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let state = SessionStateStore(sessionStore: sessionStore, draftStore: draftStore)
+        let start = Date(timeIntervalSince1970: 0)
+        state.startSession(workout: makeWorkout(), at: start)
+        state.pauseSession(at: start.addingTimeInterval(100))
+
+        let elapsed = state.currentElapsedSeconds(at: start.addingTimeInterval(200))
+        XCTAssertEqual(elapsed, 100)
+    }
+}
