@@ -7,17 +7,17 @@ Usage: scripts/ios-sim.sh [build|test|run] [--device-name "<name>"] [--device-id
 
 Defaults:
   command: run
-  device-name: iPhone 16
+  device-name: iPhone 17
 
 Examples:
   scripts/ios-sim.sh
-  scripts/ios-sim.sh run --device-name "iPhone 16 Pro"
+  scripts/ios-sim.sh run --device-name "iPhone 17 Pro"
   scripts/ios-sim.sh test --device-id 2C32766E-60FE-4ED0-9A62-6F3F772DAFCC
 USAGE
 }
 
 command="run"
-device_name="iPhone 16"
+device_name="iPhone 17"
 device_id=""
 
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
@@ -106,9 +106,21 @@ test_app() {
 
 install_and_launch() {
   local app_path
-  app_path=$(find ~/Library/Developer/Xcode/DerivedData/WorkoutApp-*/Build/Products/Debug-iphonesimulator -maxdepth 1 -name 'WorkoutApp.app' | head -n 1)
+  app_path=$(
+    xcodebuild \
+      -project "$project" \
+      -scheme "$scheme" \
+      -destination "$destination" \
+      -showBuildSettings -json \
+      | jq -r '.[] | select(.target == "WorkoutApp") | .buildSettings.TARGET_BUILD_DIR + "/" + .buildSettings.WRAPPER_NAME' \
+      | head -n 1
+  )
   if [[ -z "$app_path" ]]; then
-    echo "Built app not found under DerivedData. Run build first." >&2
+    echo "Unable to resolve built app path from build settings." >&2
+    exit 1
+  fi
+  if [[ ! -d "$app_path" ]]; then
+    echo "Built app not found at: $app_path" >&2
     exit 1
   fi
   xcrun simctl install "$device_id" "$app_path"
