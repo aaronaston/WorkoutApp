@@ -9,6 +9,7 @@ enum SessionPhase: String, Codable, Hashable {
 struct SessionDraft: Codable, Hashable {
     let id: UUID
     var workout: WorkoutDefinition
+    var workoutArtifactID: WorkoutArtifactID
     var startedAt: Date
     var endedAt: Date?
     var pausedAt: Date?
@@ -20,6 +21,7 @@ struct SessionDraft: Codable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case id
         case workout
+        case workoutArtifactID
         case startedAt
         case endedAt
         case pausedAt
@@ -32,6 +34,7 @@ struct SessionDraft: Codable, Hashable {
     init(
         id: UUID,
         workout: WorkoutDefinition,
+        workoutArtifactID: WorkoutArtifactID,
         startedAt: Date,
         endedAt: Date?,
         pausedAt: Date?,
@@ -42,6 +45,7 @@ struct SessionDraft: Codable, Hashable {
     ) {
         self.id = id
         self.workout = workout
+        self.workoutArtifactID = workoutArtifactID
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.pausedAt = pausedAt
@@ -55,6 +59,7 @@ struct SessionDraft: Codable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         workout = try container.decode(WorkoutDefinition.self, forKey: .workout)
+        workoutArtifactID = try container.decodeIfPresent(WorkoutArtifactID.self, forKey: .workoutArtifactID) ?? workout.id
         startedAt = try container.decode(Date.self, forKey: .startedAt)
         endedAt = try container.decodeIfPresent(Date.self, forKey: .endedAt)
         pausedAt = try container.decodeIfPresent(Date.self, forKey: .pausedAt)
@@ -68,6 +73,7 @@ struct SessionDraft: Codable, Hashable {
 struct ActiveSession: Hashable {
     let id: UUID
     let workout: WorkoutDefinition
+    let workoutArtifactID: WorkoutArtifactID
     let startedAt: Date
     var endedAt: Date?
     var pausedAt: Date?
@@ -105,10 +111,16 @@ final class SessionStateStore: ObservableObject {
     @Published private(set) var activeSession: ActiveSession?
 
     private let sessionStore: WorkoutSessionStore
+    private let artifactStore: WorkoutArtifactStore
     private let draftStore: SessionDraftStore
 
-    init(sessionStore: WorkoutSessionStore, draftStore: SessionDraftStore = SessionDraftStore()) {
+    init(
+        sessionStore: WorkoutSessionStore,
+        artifactStore: WorkoutArtifactStore? = nil,
+        draftStore: SessionDraftStore = SessionDraftStore()
+    ) {
         self.sessionStore = sessionStore
+        self.artifactStore = artifactStore ?? WorkoutArtifactStore()
         self.draftStore = draftStore
         restoreDraftIfAvailable()
     }
@@ -122,9 +134,15 @@ final class SessionStateStore: ObservableObject {
         guard phase != .started else { return }
         let clampedInitialElapsed = max(0, initialElapsedSeconds)
         let adjustedStart = date.addingTimeInterval(-TimeInterval(clampedInitialElapsed))
+        let resolvedArtifactID = resolveArtifactID(
+            workout: workout,
+            startedAt: date,
+            sessionID: sessionID
+        )
         activeSession = ActiveSession(
             id: sessionID ?? UUID(),
             workout: workout,
+            workoutArtifactID: resolvedArtifactID,
             startedAt: adjustedStart,
             endedAt: nil,
             pausedAt: nil,
@@ -160,7 +178,9 @@ final class SessionStateStore: ObservableObject {
             timerMode: .stopwatch,
             logEntries: [],
             notes: notes,
-            perceivedExertion: nil
+            perceivedExertion: nil,
+            workoutArtifactID: session.workoutArtifactID,
+            workoutSnapshot: workout
         )
 
         do {
@@ -212,6 +232,7 @@ final class SessionStateStore: ObservableObject {
         let draft = SessionDraft(
             id: session.id,
             workout: session.workout,
+            workoutArtifactID: session.workoutArtifactID,
             startedAt: session.startedAt,
             endedAt: session.endedAt,
             pausedAt: session.pausedAt,
@@ -233,6 +254,7 @@ final class SessionStateStore: ObservableObject {
         activeSession = ActiveSession(
             id: draft.id,
             workout: draft.workout,
+            workoutArtifactID: draft.workoutArtifactID,
             startedAt: draft.startedAt,
             endedAt: draft.endedAt,
             pausedAt: draft.pausedAt,
@@ -240,6 +262,55 @@ final class SessionStateStore: ObservableObject {
             notes: draft.notes
         )
         phase = .started
+    }
+
+    private func resolveArtifactID(
+        workout: WorkoutDefinition,
+        startedAt: Date,
+        sessionID: UUID?
+    ) -> WorkoutArtifactID {
+        if let sessionID,
+           let existing = sessionStore.session(id: sessionID),
+           !existing.workoutArtifactID.isEmpty {
+            return existing.workoutArtifactID
+        }
+
+        let artifact = WorkoutArtifact(
+            id: UUID().uuidString,
+            workout: workout,
+            provenance: WorkoutArtifactProvenance(
+                baseWorkoutID: workout.sourceID ?? workout.id,
+                sourceSessionID: nil,
+                parentArtifactID: nil,
+                derivationMode: derivationMode(for: workout.source),
+                createdAt: startedAt
+            ),
+            createdAt: startedAt,
+            updatedAt: startedAt
+        )
+
+        do {
+            try artifactStore.upsertArtifact(artifact)
+        } catch {
+            // Best-effort persistence; active sessions should still start.
+        }
+
+        return artifact.id
+    }
+
+    private func derivationMode(for source: WorkoutSource) -> WorkoutDerivationMode {
+        switch source {
+        case .knowledgeBase:
+            return .knowledgeBase
+        case .template:
+            return .template
+        case .variant:
+            return .variant
+        case .external:
+            return .external
+        case .generated:
+            return .generated
+        }
     }
 }
 

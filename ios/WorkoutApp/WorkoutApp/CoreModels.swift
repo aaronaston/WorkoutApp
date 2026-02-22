@@ -1,6 +1,7 @@
 import Foundation
 
 typealias WorkoutID = String
+typealias WorkoutArtifactID = String
 
 enum WorkoutSource: String, Codable, Hashable {
     case knowledgeBase
@@ -90,6 +91,56 @@ struct WorkoutDefinition: Identifiable, Codable, Hashable {
     var updatedAt: Date?
 }
 
+extension WorkoutDefinition {
+    static func snapshotFallback(from reference: WorkoutReference) -> WorkoutDefinition {
+        WorkoutDefinition(
+            id: reference.id,
+            source: reference.source,
+            sourceID: reference.id,
+            sourceURL: nil,
+            title: reference.title,
+            summary: nil,
+            metadata: WorkoutMetadata(
+                durationMinutes: nil,
+                focusTags: [],
+                equipmentTags: [],
+                locationTag: nil,
+                otherTags: []
+            ),
+            content: WorkoutContent(sourceMarkdown: "", parsedSections: nil, notes: nil),
+            timerConfiguration: nil,
+            versionHash: reference.versionHash,
+            createdAt: nil,
+            updatedAt: nil
+        )
+    }
+}
+
+enum WorkoutDerivationMode: String, Codable, Hashable {
+    case knowledgeBase
+    case template
+    case variant
+    case generated
+    case external
+    case copiedFromSession
+}
+
+struct WorkoutArtifactProvenance: Codable, Hashable {
+    var baseWorkoutID: WorkoutID?
+    var sourceSessionID: UUID?
+    var parentArtifactID: WorkoutArtifactID?
+    var derivationMode: WorkoutDerivationMode
+    var createdAt: Date
+}
+
+struct WorkoutArtifact: Identifiable, Codable, Hashable {
+    let id: WorkoutArtifactID
+    var workout: WorkoutDefinition
+    var provenance: WorkoutArtifactProvenance
+    var createdAt: Date
+    var updatedAt: Date
+}
+
 struct WorkoutTemplate: Identifiable, Codable, Hashable {
     let id: WorkoutID
     var baseWorkoutID: WorkoutID?
@@ -146,6 +197,64 @@ struct WorkoutSession: Identifiable, Codable, Hashable {
     var logEntries: [ExerciseLog]
     var notes: String?
     var perceivedExertion: Int?
+    var workoutArtifactID: WorkoutArtifactID
+    var workoutSnapshot: WorkoutDefinition
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case workout
+        case startedAt
+        case endedAt
+        case durationSeconds
+        case timerMode
+        case logEntries
+        case notes
+        case perceivedExertion
+        case workoutArtifactID
+        case workoutSnapshot
+    }
+
+    init(
+        id: UUID,
+        workout: WorkoutReference,
+        startedAt: Date,
+        endedAt: Date?,
+        durationSeconds: Int?,
+        timerMode: TimerMode?,
+        logEntries: [ExerciseLog],
+        notes: String?,
+        perceivedExertion: Int?,
+        workoutArtifactID: WorkoutArtifactID? = nil,
+        workoutSnapshot: WorkoutDefinition? = nil
+    ) {
+        self.id = id
+        self.workout = workout
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.durationSeconds = durationSeconds
+        self.timerMode = timerMode
+        self.logEntries = logEntries
+        self.notes = notes
+        self.perceivedExertion = perceivedExertion
+        self.workoutArtifactID = workoutArtifactID ?? workout.id
+        self.workoutSnapshot = workoutSnapshot ?? WorkoutDefinition.snapshotFallback(from: workout)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        workout = try container.decode(WorkoutReference.self, forKey: .workout)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        endedAt = try container.decodeIfPresent(Date.self, forKey: .endedAt)
+        durationSeconds = try container.decodeIfPresent(Int.self, forKey: .durationSeconds)
+        timerMode = try container.decodeIfPresent(TimerMode.self, forKey: .timerMode)
+        logEntries = try container.decodeIfPresent([ExerciseLog].self, forKey: .logEntries) ?? []
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        perceivedExertion = try container.decodeIfPresent(Int.self, forKey: .perceivedExertion)
+        workoutArtifactID = try container.decodeIfPresent(WorkoutArtifactID.self, forKey: .workoutArtifactID) ?? workout.id
+        workoutSnapshot = try container.decodeIfPresent(WorkoutDefinition.self, forKey: .workoutSnapshot)
+            ?? WorkoutDefinition.snapshotFallback(from: workout)
+    }
 }
 
 struct ExerciseLog: Identifiable, Codable, Hashable {
@@ -303,21 +412,19 @@ struct HistorySessionDiscovery {
             parts.append(notes)
         }
 
-        guard let workout else {
-            return parts.joined(separator: " ")
-        }
+        let effectiveWorkout = workout ?? session.workoutSnapshot
 
-        parts.append(workout.title)
-        if let summary = workout.summary {
+        parts.append(effectiveWorkout.title)
+        if let summary = effectiveWorkout.summary {
             parts.append(summary)
         }
-        parts.append(workout.metadata.focusTags.joined(separator: " "))
-        parts.append(workout.metadata.equipmentTags.joined(separator: " "))
-        if let locationTag = workout.metadata.locationTag {
+        parts.append(effectiveWorkout.metadata.focusTags.joined(separator: " "))
+        parts.append(effectiveWorkout.metadata.equipmentTags.joined(separator: " "))
+        if let locationTag = effectiveWorkout.metadata.locationTag {
             parts.append(locationTag)
         }
-        parts.append(workout.metadata.otherTags.joined(separator: " "))
-        parts.append(workout.content.sourceMarkdown)
+        parts.append(effectiveWorkout.metadata.otherTags.joined(separator: " "))
+        parts.append(effectiveWorkout.content.sourceMarkdown)
         return parts.joined(separator: " ")
     }
 

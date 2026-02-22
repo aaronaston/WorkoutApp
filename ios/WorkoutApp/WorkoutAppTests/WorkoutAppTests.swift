@@ -451,22 +451,24 @@ final class SessionStateStoreTests: XCTestCase {
     }
 
     @MainActor
-    private func makeStores() -> (WorkoutSessionStore, SessionDraftStore, URL) {
+    private func makeStores() -> (WorkoutSessionStore, WorkoutArtifactStore, SessionDraftStore, URL) {
         let baseURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("WorkoutAppTests-\(UUID().uuidString)", isDirectory: true)
         let sessionsURL = baseURL.appendingPathComponent("sessions.json")
+        let artifactsURL = baseURL.appendingPathComponent("artifacts.json")
         let draftURL = baseURL.appendingPathComponent("draft.json")
         let sessionStore = WorkoutSessionStore(fileURL: sessionsURL)
+        let artifactStore = WorkoutArtifactStore(fileURL: artifactsURL)
         let draftStore = SessionDraftStore(fileURL: draftURL)
-        return (sessionStore, draftStore, baseURL)
+        return (sessionStore, artifactStore, draftStore, baseURL)
     }
 
     @MainActor
     func testCancelSessionDoesNotWriteHistory() throws {
-        let (sessionStore, draftStore, baseURL) = makeStores()
+        let (sessionStore, artifactStore, draftStore, baseURL) = makeStores()
         defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let state = SessionStateStore(sessionStore: sessionStore, draftStore: draftStore)
+        let state = SessionStateStore(sessionStore: sessionStore, artifactStore: artifactStore, draftStore: draftStore)
         state.startSession(workout: makeWorkout(), at: Date(timeIntervalSince1970: 100))
         state.cancelSession()
 
@@ -477,10 +479,10 @@ final class SessionStateStoreTests: XCTestCase {
 
     @MainActor
     func testPauseResumeExcludesPausedTimeFromCompletedDuration() throws {
-        let (sessionStore, draftStore, baseURL) = makeStores()
+        let (sessionStore, artifactStore, draftStore, baseURL) = makeStores()
         defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let state = SessionStateStore(sessionStore: sessionStore, draftStore: draftStore)
+        let state = SessionStateStore(sessionStore: sessionStore, artifactStore: artifactStore, draftStore: draftStore)
         let start = Date(timeIntervalSince1970: 0)
         state.startSession(workout: makeWorkout(), at: start)
         state.pauseSession(at: start.addingTimeInterval(120))
@@ -492,10 +494,10 @@ final class SessionStateStoreTests: XCTestCase {
 
     @MainActor
     func testEndingWhilePausedCountsOnlyActiveTime() throws {
-        let (sessionStore, draftStore, baseURL) = makeStores()
+        let (sessionStore, artifactStore, draftStore, baseURL) = makeStores()
         defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let state = SessionStateStore(sessionStore: sessionStore, draftStore: draftStore)
+        let state = SessionStateStore(sessionStore: sessionStore, artifactStore: artifactStore, draftStore: draftStore)
         let start = Date(timeIntervalSince1970: 0)
         state.startSession(workout: makeWorkout(), at: start)
         state.pauseSession(at: start.addingTimeInterval(60))
@@ -506,10 +508,10 @@ final class SessionStateStoreTests: XCTestCase {
 
     @MainActor
     func testElapsedTimeRemainsFixedWhilePaused() throws {
-        let (sessionStore, draftStore, baseURL) = makeStores()
+        let (sessionStore, artifactStore, draftStore, baseURL) = makeStores()
         defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let state = SessionStateStore(sessionStore: sessionStore, draftStore: draftStore)
+        let state = SessionStateStore(sessionStore: sessionStore, artifactStore: artifactStore, draftStore: draftStore)
         let start = Date(timeIntervalSince1970: 0)
         state.startSession(workout: makeWorkout(), at: start)
         state.pauseSession(at: start.addingTimeInterval(100))
@@ -520,10 +522,10 @@ final class SessionStateStoreTests: XCTestCase {
 
     @MainActor
     func testStartSessionWithInitialElapsedSeconds() throws {
-        let (sessionStore, draftStore, baseURL) = makeStores()
+        let (sessionStore, artifactStore, draftStore, baseURL) = makeStores()
         defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let state = SessionStateStore(sessionStore: sessionStore, draftStore: draftStore)
+        let state = SessionStateStore(sessionStore: sessionStore, artifactStore: artifactStore, draftStore: draftStore)
         let now = Date(timeIntervalSince1970: 1_000)
         state.startSession(workout: makeWorkout(), at: now, initialElapsedSeconds: 180)
 
@@ -533,10 +535,10 @@ final class SessionStateStoreTests: XCTestCase {
 
     @MainActor
     func testResumeSessionUpdatesExistingHistoryEntry() throws {
-        let (sessionStore, draftStore, baseURL) = makeStores()
+        let (sessionStore, artifactStore, draftStore, baseURL) = makeStores()
         defer { try? FileManager.default.removeItem(at: baseURL) }
 
-        let state = SessionStateStore(sessionStore: sessionStore, draftStore: draftStore)
+        let state = SessionStateStore(sessionStore: sessionStore, artifactStore: artifactStore, draftStore: draftStore)
         let start = Date(timeIntervalSince1970: 0)
         let firstEnd = Date(timeIntervalSince1970: 29)
 
@@ -559,5 +561,108 @@ final class SessionStateStoreTests: XCTestCase {
         XCTAssertEqual(sessionStore.sessions.count, 1)
         XCTAssertEqual(sessionStore.sessions.first?.id, original.id)
         XCTAssertEqual(sessionStore.sessions.first?.durationSeconds, 36)
+    }
+
+    @MainActor
+    func testCompletedSessionStoresArtifactReferenceAndSnapshot() throws {
+        let (sessionStore, artifactStore, draftStore, baseURL) = makeStores()
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let workout = makeWorkout(id: "snapshot-test", title: "Snapshot Test")
+        let state = SessionStateStore(sessionStore: sessionStore, artifactStore: artifactStore, draftStore: draftStore)
+        let start = Date(timeIntervalSince1970: 10)
+
+        state.startSession(workout: workout, at: start)
+        state.endSession(at: start.addingTimeInterval(90))
+
+        let completed = try XCTUnwrap(sessionStore.sessions.first)
+        XCTAssertFalse(completed.workoutArtifactID.isEmpty)
+        XCTAssertEqual(completed.workoutSnapshot.id, workout.id)
+        XCTAssertEqual(completed.workoutSnapshot.title, workout.title)
+        XCTAssertNotNil(artifactStore.artifact(id: completed.workoutArtifactID))
+    }
+}
+
+final class WorkoutArtifactStoreTests: XCTestCase {
+    @MainActor
+    func testProvenanceChainReturnsParentLineage() throws {
+        let baseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WorkoutArtifactStoreTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let store = WorkoutArtifactStore(fileURL: baseURL.appendingPathComponent("artifacts.json"))
+        let now = Date(timeIntervalSince1970: 1_000)
+        let root = makeArtifact(id: "root", parent: nil, createdAt: now)
+        let child = makeArtifact(id: "child", parent: "root", createdAt: now.addingTimeInterval(60))
+        let grandchild = makeArtifact(id: "grandchild", parent: "child", createdAt: now.addingTimeInterval(120))
+
+        try store.appendArtifact(root)
+        try store.appendArtifact(child)
+        try store.appendArtifact(grandchild)
+
+        XCTAssertEqual(store.provenanceChain(for: "grandchild").map(\.id), ["grandchild", "child", "root"])
+    }
+
+    @MainActor
+    func testUpsertPersistsArtifactsAcrossReload() throws {
+        let baseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WorkoutArtifactStoreTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let fileURL = baseURL.appendingPathComponent("artifacts.json")
+        let store = WorkoutArtifactStore(fileURL: fileURL)
+        let artifact = makeArtifact(id: "persisted", parent: nil, createdAt: Date(timeIntervalSince1970: 1_000))
+
+        try store.upsertArtifact(artifact)
+
+        let reloaded = WorkoutArtifactStore(fileURL: fileURL)
+        XCTAssertEqual(reloaded.artifact(id: "persisted")?.id, artifact.id)
+    }
+
+    private func makeArtifact(id: String, parent: WorkoutArtifactID?, createdAt: Date) -> WorkoutArtifact {
+        let reference = WorkoutReference(id: "workout-\(id)", source: .generated, title: "Workout \(id)", versionHash: "v1")
+        return WorkoutArtifact(
+            id: id,
+            workout: WorkoutDefinition.snapshotFallback(from: reference),
+            provenance: WorkoutArtifactProvenance(
+                baseWorkoutID: reference.id,
+                sourceSessionID: nil,
+                parentArtifactID: parent,
+                derivationMode: .generated,
+                createdAt: createdAt
+            ),
+            createdAt: createdAt,
+            updatedAt: createdAt
+        )
+    }
+}
+
+final class WorkoutSessionMigrationTests: XCTestCase {
+    func testLegacySessionDecodeBackfillsArtifactAndSnapshot() throws {
+        let json = """
+        {
+          "id": "00000000-0000-0000-0000-000000000123",
+          "workout": {
+            "id": "legacy-workout",
+            "source": "knowledgeBase",
+            "title": "Legacy Workout",
+            "versionHash": "abc123"
+          },
+          "startedAt": "2026-02-22T10:00:00Z",
+          "endedAt": "2026-02-22T10:30:00Z",
+          "durationSeconds": 1800,
+          "timerMode": "stopwatch",
+          "logEntries": []
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let session = try decoder.decode(WorkoutSession.self, from: Data(json.utf8))
+
+        XCTAssertEqual(session.workoutArtifactID, "legacy-workout")
+        XCTAssertEqual(session.workoutSnapshot.id, "legacy-workout")
+        XCTAssertEqual(session.workoutSnapshot.title, "Legacy Workout")
+        XCTAssertEqual(session.workoutSnapshot.versionHash, "abc123")
     }
 }
