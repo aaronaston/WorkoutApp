@@ -286,6 +286,122 @@ final class WorkoutRecommendationEngineTests: XCTestCase {
     }
 }
 
+final class HistorySessionDiscoveryTests: XCTestCase {
+    private func makeWorkout(
+        id: WorkoutID,
+        title: String,
+        summary: String? = nil
+    ) -> WorkoutDefinition {
+        WorkoutDefinition(
+            id: id,
+            source: .knowledgeBase,
+            sourceID: id,
+            sourceURL: nil,
+            title: title,
+            summary: summary,
+            metadata: WorkoutMetadata(
+                durationMinutes: nil,
+                focusTags: [],
+                equipmentTags: [],
+                locationTag: nil,
+                otherTags: []
+            ),
+            content: WorkoutContent(sourceMarkdown: "", parsedSections: nil, notes: nil),
+            timerConfiguration: nil,
+            versionHash: nil,
+            createdAt: nil,
+            updatedAt: nil
+        )
+    }
+
+    private func makeSession(workoutID: WorkoutID, title: String, endedAt: Date) -> WorkoutSession {
+        WorkoutSession(
+            id: UUID(),
+            workout: WorkoutReference(id: workoutID, source: .knowledgeBase, title: title, versionHash: nil),
+            startedAt: endedAt.addingTimeInterval(-1_800),
+            endedAt: endedAt,
+            durationSeconds: 1_800,
+            timerMode: .stopwatch,
+            logEntries: [],
+            notes: nil,
+            perceivedExertion: nil
+        )
+    }
+
+    func testSortChronologicalOrdersByMostRecentSessionDate() {
+        let older = makeSession(
+            workoutID: "w1",
+            title: "Workout A",
+            endedAt: Date(timeIntervalSince1970: 1_000)
+        )
+        let newer = makeSession(
+            workoutID: "w2",
+            title: "Workout B",
+            endedAt: Date(timeIntervalSince1970: 2_000)
+        )
+
+        let sorted = HistorySessionDiscovery.sortSessions(
+            [older, newer],
+            allSessions: [older, newer],
+            option: .chronological
+        )
+
+        XCTAssertEqual(sorted.map(\.workout.id), ["w2", "w1"])
+    }
+
+    func testSortMostFrequentPromotesMostRepeatedWorkout() {
+        let a1 = makeSession(workoutID: "a", title: "Workout A", endedAt: Date(timeIntervalSince1970: 3_000))
+        let a2 = makeSession(workoutID: "a", title: "Workout A", endedAt: Date(timeIntervalSince1970: 2_000))
+        let b1 = makeSession(workoutID: "b", title: "Workout B", endedAt: Date(timeIntervalSince1970: 4_000))
+
+        let sorted = HistorySessionDiscovery.sortSessions(
+            [a1, b1, a2],
+            allSessions: [a1, a2, b1],
+            option: .mostFrequent
+        )
+
+        XCTAssertEqual(sorted.prefix(2).map(\.workout.id), ["a", "a"])
+    }
+
+    func testFilterSessionsMatchesKeywordsFromResolvedWorkoutSummary() {
+        let session = makeSession(
+            workoutID: "w1",
+            title: "Morning Session",
+            endedAt: Date(timeIntervalSince1970: 2_000)
+        )
+        let workout = makeWorkout(
+            id: "w1",
+            title: "Morning Session",
+            summary: "Shoulders and upper body"
+        )
+
+        let filtered = HistorySessionDiscovery.filterSessions(
+            [session],
+            query: "shoulders",
+            resolvedWorkouts: ["w1": workout]
+        )
+
+        XCTAssertEqual(filtered.map(\.id), [session.id])
+    }
+
+    func testFilterSessionsIncludesSemanticMatchesWithoutKeywordHit() {
+        let session = makeSession(
+            workoutID: "w1",
+            title: "Morning Session",
+            endedAt: Date(timeIntervalSince1970: 2_000)
+        )
+
+        let filtered = HistorySessionDiscovery.filterSessions(
+            [session],
+            query: "pull day",
+            resolvedWorkouts: [:],
+            semanticMatches: ["w1"]
+        )
+
+        XCTAssertEqual(filtered.map(\.id), [session.id])
+    }
+}
+
 final class WorkoutAppInfoPlistTests: XCTestCase {
     func testDeviceFamilyIncludesIphoneAndIpad() throws {
         let families = try XCTUnwrap(

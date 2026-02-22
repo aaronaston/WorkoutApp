@@ -787,13 +787,33 @@ struct HistoryView: View {
     @EnvironmentObject private var sessionStore: WorkoutSessionStore
     @Binding var selectedTab: AppTab
     @State private var workoutLookup: [WorkoutID: WorkoutDefinition] = [:]
+    @State private var searchQuery = ""
+    @State private var sortOption: HistorySessionSortOption = .chronological
+    @State private var semanticMatchedWorkoutIDs: Set<WorkoutID> = []
+    @State private var searchIndex: WorkoutSearchIndex?
+    @State private var searchTask: Task<Void, Never>?
+    @State private var adjustingWorkout: WorkoutDefinition?
 
     init(selectedTab: Binding<AppTab>) {
         _selectedTab = selectedTab
     }
 
+    private var allSessions: [WorkoutSession] {
+        sessionStore.sessions
+    }
+
     private var sessions: [WorkoutSession] {
-        sessionStore.sessions.sorted { sessionDate(for: $0) > sessionDate(for: $1) }
+        let filtered = HistorySessionDiscovery.filterSessions(
+            allSessions,
+            query: searchQuery,
+            resolvedWorkouts: workoutLookup,
+            semanticMatches: semanticMatchedWorkoutIDs
+        )
+        return HistorySessionDiscovery.sortSessions(
+            filtered,
+            allSessions: allSessions,
+            option: sortOption
+        )
     }
 
     private var weekStart: Date {
@@ -837,6 +857,8 @@ struct HistoryView: View {
                             NavigationLink {
                                 SessionDetailView(session: session) {
                                     startAgain(session)
+                                } onAdjustStart: {
+                                    adjustAndStart(session)
                                 }
                             } label: {
                                 SessionRow(session: session)
@@ -846,6 +868,10 @@ struct HistoryView: View {
                                     startAgain(session)
                                 }
                                 .tint(.accentColor)
+                                Button("Adjust") {
+                                    adjustAndStart(session)
+                                }
+                                .tint(.orange)
                             }
                         }
                     }
@@ -857,6 +883,8 @@ struct HistoryView: View {
                             NavigationLink {
                                 SessionDetailView(session: session) {
                                     startAgain(session)
+                                } onAdjustStart: {
+                                    adjustAndStart(session)
                                 }
                             } label: {
                                 SessionRow(session: session)
@@ -866,6 +894,10 @@ struct HistoryView: View {
                                     startAgain(session)
                                 }
                                 .tint(.accentColor)
+                                Button("Adjust") {
+                                    adjustAndStart(session)
+                                }
+                                .tint(.orange)
                             }
                         }
                     }
@@ -873,8 +905,36 @@ struct HistoryView: View {
             }
         }
         .navigationTitle("History")
+        .searchable(text: $searchQuery, prompt: "Search prior workouts or notes")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu("Sort") {
+                    ForEach(HistorySessionSortOption.allCases) { option in
+                        Button(option.title) {
+                            sortOption = option
+                        }
+                    }
+                }
+            }
+        }
         .task {
             await loadWorkoutLookupIfNeeded()
+            rebuildSearchIndex()
+            scheduleSearch()
+        }
+        .onChange(of: searchQuery) { _, _ in
+            scheduleSearch()
+        }
+        .onChange(of: sessionStore.sessions) { _, _ in
+            rebuildSearchIndex()
+            scheduleSearch()
+        }
+        .navigationDestination(item: $adjustingWorkout) { workout in
+            WorkoutDetailView(
+                workout: workout,
+                recommendation: nil,
+                selectedTab: $selectedTab
+            )
         }
     }
 
@@ -894,6 +954,10 @@ struct HistoryView: View {
         let workout = resolveWorkout(for: session)
         sessionState.startSession(workout: workout)
         selectedTab = .session
+    }
+
+    private func adjustAndStart(_ session: WorkoutSession) {
+        adjustingWorkout = resolveWorkout(for: session)
     }
 
     private func resolveWorkout(for session: WorkoutSession) -> WorkoutDefinition {
@@ -935,6 +999,42 @@ struct HistoryView: View {
             workoutLookup = [:]
         }
     }
+
+    private func rebuildSearchIndex() {
+        var uniqueWorkouts: [WorkoutID: WorkoutDefinition] = [:]
+        for session in allSessions {
+            uniqueWorkouts[session.workout.id] = resolveWorkout(for: session)
+        }
+        searchIndex = WorkoutSearchIndex(workouts: Array(uniqueWorkouts.values))
+    }
+
+    private func scheduleSearch() {
+        searchTask?.cancel()
+
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, let searchIndex else {
+            semanticMatchedWorkoutIDs = []
+            return
+        }
+
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+
+            let semanticMatches = await Task.detached(priority: .userInitiated) {
+                Set(searchIndex.search(query: query, limit: 50).map { $0.workout.id })
+            }.value
+
+            guard !Task.isCancelled else {
+                return
+            }
+            await MainActor.run {
+                semanticMatchedWorkoutIDs = semanticMatches
+            }
+        }
+    }
 }
 
 struct SessionRow: View {
@@ -973,6 +1073,7 @@ struct SessionRow: View {
 struct SessionDetailView: View {
     let session: WorkoutSession
     var onStartAgain: (() -> Void)? = nil
+    var onAdjustStart: (() -> Void)? = nil
 
     private var completedDate: Date {
         session.endedAt ?? session.startedAt
@@ -1011,10 +1112,23 @@ struct SessionDetailView: View {
                     Button {
                         onStartAgain()
                     } label: {
-                        Text("Start This Workout Again")
+                        Text("Do Again")
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.accentColor.opacity(0.15))
+                            .cornerRadius(12)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if let onAdjustStart {
+                    Button {
+                        onAdjustStart()
+                    } label: {
+                        Text("Adjust + Start")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.orange.opacity(0.15))
                             .cornerRadius(12)
                     }
                     .buttonStyle(.plain)

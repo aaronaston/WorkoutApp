@@ -211,6 +211,121 @@ struct SessionSummary: Identifiable, Codable, Hashable {
     var source: WorkoutSource
 }
 
+enum HistorySessionSortOption: String, Codable, Hashable, CaseIterable, Identifiable {
+    case chronological
+    case mostFrequent
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .chronological:
+            return "Chronological"
+        case .mostFrequent:
+            return "Most Frequent"
+        }
+    }
+}
+
+struct HistorySessionDiscovery {
+    static func filterSessions(
+        _ sessions: [WorkoutSession],
+        query: String,
+        resolvedWorkouts: [WorkoutID: WorkoutDefinition],
+        semanticMatches: Set<WorkoutID> = []
+    ) -> [WorkoutSession] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedQuery.isEmpty else {
+            return sessions
+        }
+
+        let queryTokens = normalizedQuery.split(whereSeparator: \.isWhitespace).map(String.init)
+
+        return sessions.filter { session in
+            if semanticMatches.contains(session.workout.id) {
+                return true
+            }
+
+            let workout = resolvedWorkouts[session.workout.id]
+            let searchableText = searchableText(for: session, workout: workout).lowercased()
+            if searchableText.contains(normalizedQuery) {
+                return true
+            }
+
+            return !queryTokens.isEmpty && queryTokens.allSatisfy { token in
+                searchableText.contains(token)
+            }
+        }
+    }
+
+    static func sortSessions(
+        _ sessions: [WorkoutSession],
+        allSessions: [WorkoutSession],
+        option: HistorySessionSortOption
+    ) -> [WorkoutSession] {
+        switch option {
+        case .chronological:
+            return sessions.sorted { sessionDate(for: $0) > sessionDate(for: $1) }
+        case .mostFrequent:
+            let frequencyByWorkoutID = Dictionary(grouping: allSessions, by: \.workout.id)
+                .mapValues(\.count)
+            let latestByWorkoutID = Dictionary(grouping: allSessions, by: \.workout.id)
+                .mapValues { grouped in grouped.map(sessionDate(for:)).max() ?? .distantPast }
+
+            return sessions.sorted { lhs, rhs in
+                let lhsFrequency = frequencyByWorkoutID[lhs.workout.id, default: 0]
+                let rhsFrequency = frequencyByWorkoutID[rhs.workout.id, default: 0]
+                if lhsFrequency != rhsFrequency {
+                    return lhsFrequency > rhsFrequency
+                }
+
+                let lhsLatest = latestByWorkoutID[lhs.workout.id, default: .distantPast]
+                let rhsLatest = latestByWorkoutID[rhs.workout.id, default: .distantPast]
+                if lhsLatest != rhsLatest {
+                    return lhsLatest > rhsLatest
+                }
+
+                let lhsDate = sessionDate(for: lhs)
+                let rhsDate = sessionDate(for: rhs)
+                if lhsDate != rhsDate {
+                    return lhsDate > rhsDate
+                }
+
+                return lhs.id.uuidString < rhs.id.uuidString
+            }
+        }
+    }
+
+    private static func searchableText(for session: WorkoutSession, workout: WorkoutDefinition?) -> String {
+        var parts: [String] = [session.workout.title]
+
+        if let notes = session.notes {
+            parts.append(notes)
+        }
+
+        guard let workout else {
+            return parts.joined(separator: " ")
+        }
+
+        parts.append(workout.title)
+        if let summary = workout.summary {
+            parts.append(summary)
+        }
+        parts.append(workout.metadata.focusTags.joined(separator: " "))
+        parts.append(workout.metadata.equipmentTags.joined(separator: " "))
+        if let locationTag = workout.metadata.locationTag {
+            parts.append(locationTag)
+        }
+        parts.append(workout.metadata.otherTags.joined(separator: " "))
+        parts.append(workout.content.sourceMarkdown)
+        return parts.joined(separator: " ")
+    }
+
+    private static func sessionDate(for session: WorkoutSession) -> Date {
+        session.endedAt ?? session.startedAt
+    }
+}
+
 struct RecommendationWeights: Codable, Hashable {
     var focusPreferenceBoost: Double
     var durationMatchBoost: Double

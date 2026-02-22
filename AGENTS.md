@@ -32,9 +32,12 @@ Recommended labels:
 
 Goal: isolate agent changes while coordinating integration to `main`.
 
+Default for this repo: work directly on `main` unless the user explicitly asks for a worktree-based flow.
+Use the worktree process below when parallel agent isolation is requested.
+
 Rules:
 
-- Do not work in the main worktree except for integration tasks.
+- Do not work in the main worktree except for integration tasks when running in worktree mode.
 - Each agent uses its own worktree under `.worktrees/`.
 - One integrator lands to `main` at a time (manual serialization).
 
