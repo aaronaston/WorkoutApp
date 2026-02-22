@@ -37,22 +37,9 @@ Optional strict check for watch targets:
 REQUIRE_WATCH_TARGETS=true scripts/ci-archive-release.sh
 ```
 
-## CI Workflow
+## CI Status
 
-- File: `.github/workflows/ios-release-archive.yml`
-- Trigger: manual (`workflow_dispatch`)
-- Inputs:
-  - `scheme` (default `WorkoutApp`)
-  - `require_watch_targets` (default `false`)
-- Artifacts:
-  - `.xcarchive` bundle
-  - exported app-store payload (`.ipa` / export metadata)
+There is currently no active GitHub Actions release workflow in this repository.
+Release archives are produced locally via `scripts/ci-archive-release.sh`.
 
-## Required CI Secrets
-
-- `APPLE_TEAM_ID`
-- `APP_STORE_CONNECT_KEY_BASE64`
-- `APP_STORE_CONNECT_KEY_ID`
-- `APP_STORE_CONNECT_ISSUER_ID`
-- `IOS_DISTRIBUTION_CERT_BASE64`
-- `IOS_DISTRIBUTION_CERT_PASSWORD`
+If CI automation is reintroduced, update this document and add the workflow definition in the same change.

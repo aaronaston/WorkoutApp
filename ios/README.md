@@ -7,7 +7,6 @@ Open `ios/WorkoutApp/WorkoutApp.xcodeproj` in Xcode to run the app.
 The release archive pipeline is defined in:
 
 - `scripts/ci-archive-release.sh`
-- `.github/workflows/ios-release-archive.yml`
 - `docs/release/ios-watch-release-archive.md`
 
 It archives the shared `WorkoutApp` scheme in `Release` configuration using automatic signing with an Apple Distribution certificate and App Store Connect API key.

@@ -2,6 +2,17 @@
 
 This folder contains architecture and decision documentation.
 
+## Document Roles
+- Intent/target state:
+  - `readme.md`
+  - `docs/features/plan-your-workout-requirements.md`
+  - `docs/features/plan-your-workout-design.md`
+  - `docs/architecture/README.md`
+- Current implementation state:
+  - `docs/current-state.md`
+- Current-vs-target gaps:
+  - `docs/gap-analysis-current-vs-target.md`
+
 ## Structure
 - architecture/ : system architecture references and artifacts
 - decisions/ : architecture and design decisions (ADRs, DDRs, registries)

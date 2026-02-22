@@ -1,6 +1,11 @@
 # Architecture and Design
 
 This document uses TOGAF domains as the organizing structure and C4-style decomposition for system detail.
+It describes the target architecture and intended direction.
+
+For implementation reality, see:
+- `docs/current-state.md`
+- `docs/gap-analysis-current-vs-target.md`
 
 ## Diagram Index
 - [C4 Context Diagram: WorkoutApp](c4-context-workoutapp.md)
@@ -44,7 +49,7 @@ This document uses TOGAF domains as the organizing structure and C4-style decomp
 
 ### Component View (inside the app)
 - **Discovery & Recommendations:** ranking engine, explainable reasons, preference weighting.
-- **Search & Browse:** filters, tags, and direct selection; search results are ordered alphabetically by workout title.
+- **Search & Browse:** filters, tags, and direct selection.
 - **Knowledge Base Loader:** Markdown reader, metadata extractor, indexer.
 - **Template/Variant Manager:** copy/derive, edit, provenance tracking.
 - **Execution Engine:** timer modes (EMOM/interval/AMRAP/stopwatch/countdown), cues, session recovery.
@@ -159,7 +164,7 @@ This document uses TOGAF domains as the organizing structure and C4-style decomp
 
 ### Platforms & Runtime
 - iOS (Swift/SwiftUI expected).
-- Local persistence (e.g., Core Data or SQLite).
+- Local persistence (target may evolve; current implementation uses JSON files in Application Support).
 - File-based bundle resources for workouts.
 
 ### Infrastructure/Services

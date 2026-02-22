@@ -1,5 +1,9 @@
 # Workout App (iOS) — Requirements
 
+This file is the product requirements and target-state intent.
+For current implementation behavior, see `docs/current-state.md`.
+For current-vs-target gaps, see `docs/gap-analysis-current-vs-target.md`.
+
 ## Product Overview
 This is an iOS workout application whose primary job is to help the user discover an appropriate workout, execute it with timing tools, and log performance so future recommendations improve. The app is self-contained (no accounts) and centered around an immutable, bundled knowledge base of expert-programmed workouts, with support for user-created templates and user-specific variants derived from that knowledge base.
 
