@@ -23,7 +23,7 @@ struct ContentView: View {
             .tag(AppTab.discover)
 
             NavigationStack {
-                SessionView()
+                SessionView(selectedTab: $selectedTab)
             }
             .tabItem {
                 Label("Session", systemImage: "timer")
@@ -665,6 +665,7 @@ struct WorkoutDetailView: View {
 
 struct SessionView: View {
     @EnvironmentObject private var sessionState: SessionStateStore
+    @Binding var selectedTab: AppTab
     @State private var showDiscardShortSessionPrompt = false
 
     private let shortSessionDiscardThresholdSeconds = 5 * 60
@@ -726,6 +727,7 @@ struct SessionView: View {
                                 showDiscardShortSessionPrompt = true
                             } else {
                                 sessionState.endSession()
+                                selectedTab = .history
                             }
                         } label: {
                             Text("End Session")
@@ -770,6 +772,7 @@ struct SessionView: View {
         ) {
             Button("Save to History") {
                 sessionState.endSession()
+                selectedTab = .history
             }
             Button("Discard Session", role: .destructive) {
                 sessionState.cancelSession()
@@ -859,11 +862,17 @@ struct HistoryView: View {
                                     startAgain(session)
                                 } onAdjustStart: {
                                     adjustAndStart(session)
+                                } onResume: {
+                                    resumeSession(session)
                                 }
                             } label: {
                                 SessionRow(session: session)
                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Resume") {
+                                    resumeSession(session)
+                                }
+                                .tint(.green)
                                 Button("Again") {
                                     startAgain(session)
                                 }
@@ -885,11 +894,17 @@ struct HistoryView: View {
                                     startAgain(session)
                                 } onAdjustStart: {
                                     adjustAndStart(session)
+                                } onResume: {
+                                    resumeSession(session)
                                 }
                             } label: {
                                 SessionRow(session: session)
                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Resume") {
+                                    resumeSession(session)
+                                }
+                                .tint(.green)
                                 Button("Again") {
                                     startAgain(session)
                                 }
@@ -956,8 +971,27 @@ struct HistoryView: View {
         selectedTab = .session
     }
 
+    private func resumeSession(_ session: WorkoutSession) {
+        let workout = resolveWorkout(for: session)
+        sessionState.startSession(
+            workout: workout,
+            initialElapsedSeconds: sessionElapsedSeconds(session)
+        )
+        selectedTab = .session
+    }
+
     private func adjustAndStart(_ session: WorkoutSession) {
         adjustingWorkout = resolveWorkout(for: session)
+    }
+
+    private func sessionElapsedSeconds(_ session: WorkoutSession) -> Int {
+        if let durationSeconds = session.durationSeconds {
+            return max(0, durationSeconds)
+        }
+        if let endedAt = session.endedAt {
+            return max(0, Int(endedAt.timeIntervalSince(session.startedAt)))
+        }
+        return 0
     }
 
     private func resolveWorkout(for session: WorkoutSession) -> WorkoutDefinition {
@@ -1074,6 +1108,7 @@ struct SessionDetailView: View {
     let session: WorkoutSession
     var onStartAgain: (() -> Void)? = nil
     var onAdjustStart: (() -> Void)? = nil
+    var onResume: (() -> Void)? = nil
 
     private var completedDate: Date {
         session.endedAt ?? session.startedAt
@@ -1116,6 +1151,19 @@ struct SessionDetailView: View {
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.accentColor.opacity(0.15))
+                            .cornerRadius(12)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if let onResume {
+                    Button {
+                        onResume()
+                    } label: {
+                        Text("Resume")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green.opacity(0.15))
                             .cornerRadius(12)
                     }
                     .buttonStyle(.plain)

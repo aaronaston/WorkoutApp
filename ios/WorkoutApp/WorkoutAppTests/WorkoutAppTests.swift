@@ -517,4 +517,17 @@ final class SessionStateStoreTests: XCTestCase {
         let elapsed = state.currentElapsedSeconds(at: start.addingTimeInterval(200))
         XCTAssertEqual(elapsed, 100)
     }
+
+    @MainActor
+    func testStartSessionWithInitialElapsedSeconds() throws {
+        let (sessionStore, draftStore, baseURL) = makeStores()
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let state = SessionStateStore(sessionStore: sessionStore, draftStore: draftStore)
+        let now = Date(timeIntervalSince1970: 1_000)
+        state.startSession(workout: makeWorkout(), at: now, initialElapsedSeconds: 180)
+
+        let elapsed = state.currentElapsedSeconds(at: now)
+        XCTAssertEqual(elapsed, 180)
+    }
 }

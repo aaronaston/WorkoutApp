@@ -113,12 +113,18 @@ final class SessionStateStore: ObservableObject {
         restoreDraftIfAvailable()
     }
 
-    func startSession(workout: WorkoutDefinition, at date: Date = Date()) {
+    func startSession(
+        workout: WorkoutDefinition,
+        at date: Date = Date(),
+        initialElapsedSeconds: Int = 0
+    ) {
         guard phase != .started else { return }
+        let clampedInitialElapsed = max(0, initialElapsedSeconds)
+        let adjustedStart = date.addingTimeInterval(-TimeInterval(clampedInitialElapsed))
         activeSession = ActiveSession(
             id: UUID(),
             workout: workout,
-            startedAt: date,
+            startedAt: adjustedStart,
             endedAt: nil,
             pausedAt: nil,
             accumulatedPauseSeconds: 0,
