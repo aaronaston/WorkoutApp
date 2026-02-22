@@ -530,4 +530,34 @@ final class SessionStateStoreTests: XCTestCase {
         let elapsed = state.currentElapsedSeconds(at: now)
         XCTAssertEqual(elapsed, 180)
     }
+
+    @MainActor
+    func testResumeSessionUpdatesExistingHistoryEntry() throws {
+        let (sessionStore, draftStore, baseURL) = makeStores()
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        let state = SessionStateStore(sessionStore: sessionStore, draftStore: draftStore)
+        let start = Date(timeIntervalSince1970: 0)
+        let firstEnd = Date(timeIntervalSince1970: 29)
+
+        state.startSession(workout: makeWorkout(), at: start)
+        state.endSession(at: firstEnd)
+
+        let original = try XCTUnwrap(sessionStore.sessions.first)
+        XCTAssertEqual(original.durationSeconds, 29)
+
+        let resumeStart = Date(timeIntervalSince1970: 36)
+        let finalEnd = Date(timeIntervalSince1970: 43)
+        state.startSession(
+            workout: makeWorkout(),
+            at: resumeStart,
+            initialElapsedSeconds: 29,
+            sessionID: original.id
+        )
+        state.endSession(at: finalEnd)
+
+        XCTAssertEqual(sessionStore.sessions.count, 1)
+        XCTAssertEqual(sessionStore.sessions.first?.id, original.id)
+        XCTAssertEqual(sessionStore.sessions.first?.durationSeconds, 36)
+    }
 }

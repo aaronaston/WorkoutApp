@@ -975,7 +975,8 @@ struct HistoryView: View {
         let workout = resolveWorkout(for: session)
         sessionState.startSession(
             workout: workout,
-            initialElapsedSeconds: sessionElapsedSeconds(session)
+            initialElapsedSeconds: sessionElapsedSeconds(session),
+            sessionID: session.id
         )
         selectedTab = .session
     }

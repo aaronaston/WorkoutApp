@@ -116,13 +116,14 @@ final class SessionStateStore: ObservableObject {
     func startSession(
         workout: WorkoutDefinition,
         at date: Date = Date(),
-        initialElapsedSeconds: Int = 0
+        initialElapsedSeconds: Int = 0,
+        sessionID: UUID? = nil
     ) {
         guard phase != .started else { return }
         let clampedInitialElapsed = max(0, initialElapsedSeconds)
         let adjustedStart = date.addingTimeInterval(-TimeInterval(clampedInitialElapsed))
         activeSession = ActiveSession(
-            id: UUID(),
+            id: sessionID ?? UUID(),
             workout: workout,
             startedAt: adjustedStart,
             endedAt: nil,
@@ -163,7 +164,7 @@ final class SessionStateStore: ObservableObject {
         )
 
         do {
-            try sessionStore.appendSession(completed)
+            try sessionStore.upsertSession(completed)
         } catch {
             // Best-effort persistence; session UI should still finish.
         }

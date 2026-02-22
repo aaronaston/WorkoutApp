@@ -46,6 +46,19 @@ final class WorkoutSessionStore: ObservableObject {
         try saveSessionsToDisk()
     }
 
+    func upsertSession(_ session: WorkoutSession) throws {
+        guard session.endedAt != nil else {
+            throw WorkoutSessionStoreError.incompleteSession
+        }
+
+        let finalized = finalizeSession(session)
+        if let existingIndex = sessions.firstIndex(where: { $0.id == session.id }) {
+            sessions.remove(at: existingIndex)
+        }
+        sessions.insert(finalized, at: 0)
+        try saveSessionsToDisk()
+    }
+
     func updateNotes(for sessionID: UUID, notes: String?) throws {
         guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else {
             throw WorkoutSessionStoreError.missingSession
