@@ -23,8 +23,8 @@ This project uses a combined meta-framework: Zachman for coverage, TOGAF for lif
 ```
 
 Target artifact list for WorkoutApp:
-- C4 Context diagram (missing; only textual context in `docs/architecture/README.md`)
-- C4 Container diagram (missing; only textual container view in `docs/architecture/README.md`)
+- C4 Context diagram (present; see `docs/architecture/c4-context-workoutapp.md`)
+- C4 Container diagram (present; see `docs/architecture/c4-container-workoutapp.md`)
 - C4 Component diagram for workout session flow + data sync boundaries (present; see `docs/architecture/c4-component-workout-session-sync-boundaries.md`)
 - Core data model sketch for workouts, sessions, metrics, history (present; see `docs/architecture/README.md` and `docs/decisions/ddr/ddr-0003-core-data-models.md`)
 - Primary flow diagram for workout tracking + sync timeline (present; see `docs/architecture/primary-flow-workout-tracking-sync-timeline.md`)
