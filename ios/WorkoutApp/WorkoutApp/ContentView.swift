@@ -2336,24 +2336,24 @@ final class NetworkStatusMonitor: ObservableObject {
 }
 
 enum OpenAIFunctionCallingError: Error {
-    case invalidResponse
-    case missingToolArguments
-    case invalidToolPayload
-    case validationFailed
+    case invalidResponse(String)
+    case missingToolArguments(String)
+    case invalidToolPayload(String)
+    case validationFailed(String)
     case httpError(String)
 }
 
 extension OpenAIFunctionCallingError: LocalizedError {
     var errorDescription: String? {
         switch self {
-        case .invalidResponse:
-            return "Invalid response from provider."
-        case .missingToolArguments:
-            return "Provider returned no function arguments."
-        case .invalidToolPayload:
-            return "Provider returned malformed tool payload."
-        case .validationFailed:
-            return "All generated candidates failed validation."
+        case .invalidResponse(let detail):
+            return "Invalid response from provider. \(detail)"
+        case .missingToolArguments(let detail):
+            return "Provider returned no function arguments. \(detail)"
+        case .invalidToolPayload(let detail):
+            return "Provider returned malformed tool payload. \(detail)"
+        case .validationFailed(let detail):
+            return "All generated candidates failed validation. \(detail)"
         case .httpError(let message):
             return message
         }
@@ -2474,7 +2474,7 @@ actor OpenAIFunctionCallingService {
         }
 
         if candidates.isEmpty {
-            throw OpenAIFunctionCallingError.validationFailed
+            throw OpenAIFunctionCallingError.validationFailed("No valid candidates produced after generate/refine/validate loops.")
         }
         return candidates
     }
@@ -2489,13 +2489,14 @@ actor OpenAIFunctionCallingService {
         let now = Date()
         let title = (payload["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !title.isEmpty else {
-            throw OpenAIFunctionCallingError.invalidToolPayload
+            throw OpenAIFunctionCallingError.invalidToolPayload("Missing or empty title field in candidate payload.")
         }
 
         let summary = (payload["summary"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Generated with LLM function-calling."
         let sections = parseSections(from: payload["sections"])
         guard !sections.isEmpty else {
-            throw OpenAIFunctionCallingError.invalidToolPayload
+            let keys = payload.keys.sorted().joined(separator: ",")
+            throw OpenAIFunctionCallingError.invalidToolPayload("Missing/invalid sections field. Payload keys: [\(keys)]")
         }
 
         let markdown = renderMarkdown(title: title, sections: sections)
@@ -2533,7 +2534,7 @@ actor OpenAIFunctionCallingService {
         apiKey: String
     ) async throws -> [String: Any] {
         guard let endpoint else {
-            throw OpenAIFunctionCallingError.invalidResponse
+            throw OpenAIFunctionCallingError.invalidResponse("Endpoint URL was not initialized.")
         }
 
         var request = URLRequest(url: endpoint)
@@ -2577,15 +2578,15 @@ actor OpenAIFunctionCallingService {
         let (data, response) = try await performRequestWithRetry(request)
 
         guard let http = response as? HTTPURLResponse else {
-            throw OpenAIFunctionCallingError.invalidResponse
+            throw OpenAIFunctionCallingError.invalidResponse("Non-HTTP response for tool '\(name)'.")
         }
         guard (200...299).contains(http.statusCode) else {
             let message = parseAPIErrorMessage(from: data) ?? "HTTP \(http.statusCode)"
-            throw OpenAIFunctionCallingError.httpError(message)
+            throw OpenAIFunctionCallingError.httpError("Tool '\(name)' failed with \(message)")
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw OpenAIFunctionCallingError.invalidResponse
+            throw OpenAIFunctionCallingError.invalidResponse("Tool '\(name)' returned non-JSON body.")
         }
 
         guard
@@ -2597,17 +2598,21 @@ actor OpenAIFunctionCallingService {
             let function = firstTool["function"] as? [String: Any],
             let arguments = function["arguments"] as? String
         else {
-            throw OpenAIFunctionCallingError.missingToolArguments
+            let snippet = truncatedJSONSnippet(from: json, limit: 350)
+            throw OpenAIFunctionCallingError.missingToolArguments("Tool '\(name)' response lacked tool_calls/function.arguments. Snippet: \(snippet)")
         }
 
-        guard
-            let argsData = arguments.data(using: .utf8),
-            let argsJSON = try JSONSerialization.jsonObject(with: argsData) as? [String: Any]
-        else {
-            throw OpenAIFunctionCallingError.invalidToolPayload
+        if let argsJSON = parseJSONObject(from: arguments) {
+            return argsJSON
         }
 
-        return argsJSON
+        if let recovered = extractJSONObjectString(from: arguments),
+           let argsJSON = parseJSONObject(from: recovered) {
+            return argsJSON
+        }
+
+        let argumentSnippet = truncate(arguments, limit: 350)
+        throw OpenAIFunctionCallingError.invalidToolPayload("Tool '\(name)' arguments were not valid JSON object. Raw arguments: \(argumentSnippet)")
     }
 
     private func performRequestWithRetry(_ request: URLRequest) async throws -> (Data, URLResponse) {
@@ -2626,6 +2631,42 @@ actor OpenAIFunctionCallingService {
                 throw error
             }
         }
+    }
+
+    private func parseJSONObject(from text: String) -> [String: Any]? {
+        guard
+            let argsData = text.data(using: .utf8),
+            let argsJSON = try? JSONSerialization.jsonObject(with: argsData) as? [String: Any]
+        else {
+            return nil
+        }
+        return argsJSON
+    }
+
+    private func extractJSONObjectString(from text: String) -> String? {
+        guard let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}") else {
+            return nil
+        }
+        guard start <= end else {
+            return nil
+        }
+        return String(text[start...end])
+    }
+
+    private func truncatedJSONSnippet(from json: [String: Any], limit: Int) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: json, options: []),
+              let text = String(data: data, encoding: .utf8) else {
+            return "<unserializable>"
+        }
+        return truncate(text, limit: limit)
+    }
+
+    private func truncate(_ value: String, limit: Int) -> String {
+        let singleLine = value.replacingOccurrences(of: "\n", with: " ")
+        guard singleLine.count > limit else {
+            return singleLine
+        }
+        return String(singleLine.prefix(limit)) + "..."
     }
 
     private func retrieveContext(
