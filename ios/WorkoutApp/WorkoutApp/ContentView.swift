@@ -64,6 +64,7 @@ struct DiscoveryView: View {
     @EnvironmentObject private var templateStore: WorkoutTemplateStore
     @EnvironmentObject private var variantStore: WorkoutVariantStore
     @EnvironmentObject private var generatedCandidateStore: GeneratedCandidateStore
+    @EnvironmentObject private var debugLogStore: DebugLogStore
     @Binding var selectedTab: AppTab
     @StateObject private var networkMonitor = NetworkStatusMonitor()
     @State private var workouts: [WorkoutDefinition] = []
@@ -84,6 +85,7 @@ struct DiscoveryView: View {
     @State private var showTemplateManager = false
     @State private var searchRevision = 0
     @State private var generationStatusNote: String?
+    @State private var showDebugLogs = false
 
     private let equipmentFilterOptions = ["Bodyweight", "Dumbbell", "Barbell", "Band", "Kettlebell"]
     private let locationFilterOptions = ["Home", "Gym", "Away"]
@@ -150,6 +152,10 @@ struct DiscoveryView: View {
                 HStack {
                     Button("Manage Templates & Variants") {
                         showTemplateManager = true
+                    }
+                    .buttonStyle(.bordered)
+                    Button("Logs") {
+                        showDebugLogs = true
                     }
                     .buttonStyle(.bordered)
                     Spacer()
@@ -386,6 +392,9 @@ struct DiscoveryView: View {
         .sheet(isPresented: $showTemplateManager) {
             TemplateVariantManagerView()
         }
+        .sheet(isPresented: $showDebugLogs) {
+            DebugLogsView()
+        }
     }
 
     private func sectionSummary(for workout: WorkoutDefinition) -> String {
@@ -529,6 +538,11 @@ struct DiscoveryView: View {
 
         let contextWorkouts = Array(filteredSearchResults.prefix(3).map(\.workout))
         let baseBatch = generatedBatchCount
+        debugLogStore.log(
+            .info,
+            category: "generation",
+            message: "Starting batch \(baseBatch + 1) for query '\(query)' with trigger '\(trigger.rawValue)'."
+        )
         Task(priority: .userInitiated) {
             let result = await generatePipelineCandidates(
                 query: query,
@@ -544,12 +558,18 @@ struct DiscoveryView: View {
             isGenerating = false
             generatedCandidateStore.saveCandidates(generatedCandidates, forQuery: query)
             generationStatusNote = result.note
+            debugLogStore.log(
+                result.usedFallback ? .warning : .info,
+                category: "generation",
+                message: result.note
+            )
         }
     }
 
     private struct GenerationBatchResult {
         var candidates: [GeneratedCandidate]
         var note: String
+        var usedFallback: Bool
     }
 
     private func generatePipelineCandidates(
@@ -574,7 +594,8 @@ struct DiscoveryView: View {
                     if liveCandidates.count >= desiredCount {
                         return GenerationBatchResult(
                             candidates: Array(liveCandidates.prefix(desiredCount)),
-                            note: "Generated with live function-calling pipeline."
+                            note: "Generated with live function-calling pipeline.",
+                            usedFallback: false
                         )
                     }
 
@@ -587,11 +608,17 @@ struct DiscoveryView: View {
                     let needed = max(0, desiredCount - liveCandidates.count)
                     return GenerationBatchResult(
                         candidates: liveCandidates + Array(fallback.prefix(needed)),
-                        note: "Mixed live function-calling + fallback generation (\(liveCandidates.count)/\(desiredCount) live)."
+                        note: "Mixed live function-calling + fallback generation (\(liveCandidates.count)/\(desiredCount) live).",
+                        usedFallback: true
                     )
                 }
             } catch {
                 let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                debugLogStore.log(
+                    .error,
+                    category: "generation",
+                    message: "Live function-calling failed for query '\(query)': \(reason)"
+                )
                 return GenerationBatchResult(
                     candidates: deterministicPipelineCandidates(
                         query: query,
@@ -599,7 +626,8 @@ struct DiscoveryView: View {
                         trigger: trigger,
                         contextWorkouts: contextWorkouts
                     ),
-                    note: "Used deterministic fallback generation. Live generation failed: \(reason)"
+                    note: "Used deterministic fallback generation. Live generation failed: \(reason)",
+                    usedFallback: true
                 )
             }
         }
@@ -611,7 +639,8 @@ struct DiscoveryView: View {
                 trigger: trigger,
                 contextWorkouts: contextWorkouts
             ),
-            note: "Used deterministic fallback generation."
+            note: "Used deterministic fallback generation.",
+            usedFallback: true
         )
     }
 
@@ -2145,6 +2174,122 @@ struct SettingsMockView: View {
         }
         .navigationTitle("Settings")
     }
+}
+
+enum DebugLogLevel: String, Codable, Hashable {
+    case info
+    case warning
+    case error
+}
+
+struct DebugLogEntry: Identifiable, Codable, Hashable {
+    let id: UUID
+    let timestamp: Date
+    let level: DebugLogLevel
+    let category: String
+    let message: String
+
+    init(
+        id: UUID = UUID(),
+        timestamp: Date = Date(),
+        level: DebugLogLevel,
+        category: String,
+        message: String
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.level = level
+        self.category = category
+        self.message = message
+    }
+}
+
+@MainActor
+final class DebugLogStore: ObservableObject {
+    @Published private(set) var entries: [DebugLogEntry] = []
+    private let maxEntries = 500
+
+    func log(_ level: DebugLogLevel, category: String, message: String) {
+        let entry = DebugLogEntry(level: level, category: category, message: message)
+        entries.insert(entry, at: 0)
+        if entries.count > maxEntries {
+            entries = Array(entries.prefix(maxEntries))
+        }
+    }
+
+    func clear() {
+        entries.removeAll()
+    }
+}
+
+struct DebugLogsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var debugLogStore: DebugLogStore
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if debugLogStore.entries.isEmpty {
+                    Text("No debug logs yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(debugLogStore.entries) { entry in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 8) {
+                                Text(entry.level.rawValue.uppercased())
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(levelColor(entry.level).opacity(0.15))
+                                    .foregroundStyle(levelColor(entry.level))
+                                    .cornerRadius(6)
+                                Text(entry.category)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(Self.timestampFormatter.string(from: entry.timestamp))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(entry.message)
+                                .font(.caption)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .navigationTitle("Debug Logs")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Clear") {
+                        debugLogStore.clear()
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private func levelColor(_ level: DebugLogLevel) -> Color {
+        switch level {
+        case .info:
+            return .blue
+        case .warning:
+            return .orange
+        case .error:
+            return .red
+        }
+    }
+
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
 }
 
 @MainActor

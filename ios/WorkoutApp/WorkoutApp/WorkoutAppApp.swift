@@ -9,6 +9,7 @@ struct WorkoutAppApp: App {
     @StateObject private var workoutTemplateStore: WorkoutTemplateStore
     @StateObject private var workoutVariantStore: WorkoutVariantStore
     @StateObject private var generatedCandidateStore: GeneratedCandidateStore
+    @StateObject private var debugLogStore: DebugLogStore
     @StateObject private var sessionStateStore: SessionStateStore
 
     init() {
@@ -17,12 +18,14 @@ struct WorkoutAppApp: App {
         let workoutTemplateStore = WorkoutTemplateStore()
         let workoutVariantStore = WorkoutVariantStore()
         let generatedCandidateStore = GeneratedCandidateStore()
+        let debugLogStore = DebugLogStore()
         _preferencesStore = StateObject(wrappedValue: UserPreferencesStore())
         _workoutSessionStore = StateObject(wrappedValue: workoutSessionStore)
         _workoutArtifactStore = StateObject(wrappedValue: workoutArtifactStore)
         _workoutTemplateStore = StateObject(wrappedValue: workoutTemplateStore)
         _workoutVariantStore = StateObject(wrappedValue: workoutVariantStore)
         _generatedCandidateStore = StateObject(wrappedValue: generatedCandidateStore)
+        _debugLogStore = StateObject(wrappedValue: debugLogStore)
         _sessionStateStore = StateObject(
             wrappedValue: SessionStateStore(
                 sessionStore: workoutSessionStore,
@@ -40,6 +43,7 @@ struct WorkoutAppApp: App {
                 .environmentObject(workoutTemplateStore)
                 .environmentObject(workoutVariantStore)
                 .environmentObject(generatedCandidateStore)
+                .environmentObject(debugLogStore)
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background || newPhase == .inactive {
