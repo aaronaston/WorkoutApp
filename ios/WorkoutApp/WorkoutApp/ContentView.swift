@@ -603,7 +603,12 @@ struct DiscoveryView: View {
         if let apiKey = preferencesStore.llmAPIKey(),
            preferencesStore.preferences.llm.enabled {
             do {
-                let liveCandidates = try await functionCallingService.generateCandidates(
+                debugLogStore.log(
+                    .info,
+                    category: "generation",
+                    message: "Attempting live function-calling batch for query '\(query)' (\(desiredCount) candidates)."
+                )
+                let liveCandidates = try await fetchLiveCandidatesWithTimeout(
                     query: query,
                     contextWorkouts: contextWorkouts,
                     trigger: trigger,
@@ -663,6 +668,39 @@ struct DiscoveryView: View {
             note: "Used deterministic fallback generation.",
             usedFallback: true
         )
+    }
+
+    private func fetchLiveCandidatesWithTimeout(
+        query: String,
+        contextWorkouts: [WorkoutDefinition],
+        trigger: GenerationTrigger,
+        count: Int,
+        modelID: String,
+        apiKey: String,
+        timeoutSeconds: Double = 45
+    ) async throws -> [GeneratedCandidate] {
+        try await withThrowingTaskGroup(of: [GeneratedCandidate].self) { group in
+            group.addTask {
+                try await functionCallingService.generateCandidates(
+                    query: query,
+                    contextWorkouts: contextWorkouts,
+                    trigger: trigger,
+                    count: count,
+                    modelID: modelID,
+                    apiKey: apiKey
+                )
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                throw OpenAIFunctionCallingError.timeout("Live generation batch exceeded \(Int(timeoutSeconds))s.")
+            }
+
+            guard let first = try await group.next() else {
+                throw OpenAIFunctionCallingError.timeout("Live generation batch returned no result.")
+            }
+            group.cancelAll()
+            return first
+        }
     }
 
     private func deterministicPipelineCandidates(
@@ -2341,6 +2379,7 @@ enum OpenAIFunctionCallingError: Error {
     case invalidToolPayload(String)
     case validationFailed(String)
     case httpError(String)
+    case timeout(String)
 }
 
 extension OpenAIFunctionCallingError: LocalizedError {
@@ -2355,6 +2394,8 @@ extension OpenAIFunctionCallingError: LocalizedError {
         case .validationFailed(let detail):
             return "All generated candidates failed validation. \(detail)"
         case .httpError(let message):
+            return message
+        case .timeout(let message):
             return message
         }
     }
