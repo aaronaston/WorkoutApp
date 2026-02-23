@@ -600,21 +600,29 @@ struct DiscoveryView: View {
         contextWorkouts: [WorkoutDefinition]
     ) async -> GenerationBatchResult {
         let desiredCount = 5
+        let liveTargetCount = 1
         if let apiKey = preferencesStore.llmAPIKey(),
            preferencesStore.preferences.llm.enabled {
+            let liveLogger: @Sendable (String) -> Void = { message in
+                Task { @MainActor in
+                    debugLogStore.log(.info, category: "generation.live", message: message)
+                }
+            }
             do {
                 debugLogStore.log(
                     .info,
                     category: "generation",
-                    message: "Attempting live function-calling batch for query '\(query)' (\(desiredCount) candidates)."
+                    message: "Attempting live function-calling batch for query '\(query)' (\(liveTargetCount)/\(desiredCount) candidates live)."
                 )
                 let liveCandidates = try await fetchLiveCandidatesWithTimeout(
                     query: query,
                     contextWorkouts: contextWorkouts,
                     trigger: trigger,
-                    count: desiredCount,
+                    count: liveTargetCount,
                     modelID: preferencesStore.preferences.llm.modelID,
                     apiKey: apiKey
+                    ,
+                    log: liveLogger
                 )
                 if !liveCandidates.isEmpty {
                     if liveCandidates.count >= desiredCount {
@@ -634,7 +642,7 @@ struct DiscoveryView: View {
                     let needed = max(0, desiredCount - liveCandidates.count)
                     return GenerationBatchResult(
                         candidates: liveCandidates + Array(fallback.prefix(needed)),
-                        note: "Mixed live function-calling + fallback generation (\(liveCandidates.count)/\(desiredCount) live).",
+                        note: "Mixed live function-calling + fallback generation (\(liveCandidates.count)/\(desiredCount) live; debug mode).",
                         usedFallback: true
                     )
                 }
@@ -677,7 +685,8 @@ struct DiscoveryView: View {
         count: Int,
         modelID: String,
         apiKey: String,
-        timeoutSeconds: Double = 45
+        timeoutSeconds: Double = 45,
+        log: @escaping @Sendable (String) -> Void
     ) async throws -> [GeneratedCandidate] {
         try await withThrowingTaskGroup(of: [GeneratedCandidate].self) { group in
             group.addTask {
@@ -687,7 +696,8 @@ struct DiscoveryView: View {
                     trigger: trigger,
                     count: count,
                     modelID: modelID,
-                    apiKey: apiKey
+                    apiKey: apiKey,
+                    log: log
                 )
             }
             group.addTask {
@@ -2412,7 +2422,8 @@ actor OpenAIFunctionCallingService {
         trigger: GenerationTrigger,
         count: Int,
         modelID: String,
-        apiKey: String
+        apiKey: String,
+        log: @escaping @Sendable (String) -> Void
     ) async throws -> [GeneratedCandidate] {
         let maxRounds = 2
         let maxRepairAttempts = 1
@@ -2421,6 +2432,7 @@ actor OpenAIFunctionCallingService {
         var usedTitles: Set<String> = []
 
         for index in 0..<target {
+            log("candidate[\(index + 1)] generate_workout start")
             let variationHint = "Variation \(index + 1) of \(target)"
             let generated = try await callTool(
                 name: "generate_workout",
@@ -2433,8 +2445,11 @@ actor OpenAIFunctionCallingService {
                     "usedTitles": Array(usedTitles)
                 ],
                 modelID: modelID,
-                apiKey: apiKey
+                apiKey: apiKey,
+                log: log,
+                context: "candidate[\(index + 1)] generate_workout"
             )
+            log("candidate[\(index + 1)] generate_workout success")
 
             let retrievedContext = retrieveContext(
                 query: query,
@@ -2445,6 +2460,7 @@ actor OpenAIFunctionCallingService {
             var candidatePayload = generated
             var generationRound = 1
             for round in 1..<maxRounds {
+                log("candidate[\(index + 1)] refine_workout round \(round + 1) start")
                 if let refined = try? await callTool(
                     name: "refine_workout",
                     description: "Refine a generated workout with retrieved context.",
@@ -2456,16 +2472,22 @@ actor OpenAIFunctionCallingService {
                         "round": round + 1
                     ],
                     modelID: modelID,
-                    apiKey: apiKey
+                    apiKey: apiKey,
+                    log: log,
+                    context: "candidate[\(index + 1)] refine_workout round \(round + 1)"
                 ) {
                     candidatePayload = refined
                     generationRound = round + 1
+                    log("candidate[\(index + 1)] refine_workout round \(round + 1) success")
+                } else {
+                    log("candidate[\(index + 1)] refine_workout round \(round + 1) skipped (tool error, continuing)")
                 }
             }
 
             var repairedPayload = candidatePayload
             var repairAttempts = 0
             while repairAttempts <= maxRepairAttempts {
+                log("candidate[\(index + 1)] validate_workout attempt \(repairAttempts + 1) start")
                 let validation = try await callTool(
                     name: "validate_workout",
                     description: "Validate a workout candidate against hard constraints.",
@@ -2474,11 +2496,14 @@ actor OpenAIFunctionCallingService {
                         "candidate": repairedPayload
                     ],
                     modelID: modelID,
-                    apiKey: apiKey
+                    apiKey: apiKey,
+                    log: log,
+                    context: "candidate[\(index + 1)] validate_workout attempt \(repairAttempts + 1)"
                 )
 
                 let isValid = (validation["isValid"] as? Bool) ?? false
                 if isValid {
+                    log("candidate[\(index + 1)] validate_workout success")
                     let built = try buildCandidate(
                         payload: repairedPayload,
                         query: query,
@@ -2488,10 +2513,12 @@ actor OpenAIFunctionCallingService {
                     )
                     usedTitles.insert(built.title.lowercased())
                     candidates.append(built)
+                    log("candidate[\(index + 1)] buildCandidate success")
                     break
                 }
 
                 let issues = validation["issues"] as? [String] ?? []
+                log("candidate[\(index + 1)] validate_workout failed issues=\(issues.joined(separator: "; "))")
                 guard repairAttempts < maxRepairAttempts else {
                     break
                 }
@@ -2506,9 +2533,12 @@ actor OpenAIFunctionCallingService {
                         "repairIssues": issues
                     ],
                     modelID: modelID,
-                    apiKey: apiKey
+                    apiKey: apiKey,
+                    log: log,
+                    context: "candidate[\(index + 1)] repair refine_workout"
                 ) {
                     repairedPayload = repaired
+                    log("candidate[\(index + 1)] repair refine_workout success")
                 }
                 repairAttempts += 1
             }
@@ -2572,7 +2602,9 @@ actor OpenAIFunctionCallingService {
         schema: [String: Any],
         payload: [String: Any],
         modelID: String,
-        apiKey: String
+        apiKey: String,
+        log: @escaping @Sendable (String) -> Void,
+        context: String
     ) async throws -> [String: Any] {
         guard let endpoint else {
             throw OpenAIFunctionCallingError.invalidResponse("Endpoint URL was not initialized.")
@@ -2616,7 +2648,10 @@ actor OpenAIFunctionCallingService {
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let startedAt = Date()
         let (data, response) = try await performRequestWithRetry(request)
+        let elapsed = Int(Date().timeIntervalSince(startedAt))
+        log("\(context) http completed in \(elapsed)s")
 
         guard let http = response as? HTTPURLResponse else {
             throw OpenAIFunctionCallingError.invalidResponse("Non-HTTP response for tool '\(name)'.")
