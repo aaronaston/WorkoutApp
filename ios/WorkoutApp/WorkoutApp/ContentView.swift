@@ -2362,6 +2362,8 @@ extension OpenAIFunctionCallingError: LocalizedError {
 
 actor OpenAIFunctionCallingService {
     private let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")
+    private let requestTimeoutSeconds: TimeInterval = 90
+    private let retryOnTimeoutCount = 1
 
     func generateCandidates(
         query: String,
@@ -2536,7 +2538,7 @@ actor OpenAIFunctionCallingService {
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
-        request.timeoutInterval = 30
+        request.timeoutInterval = requestTimeoutSeconds
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
@@ -2572,7 +2574,7 @@ actor OpenAIFunctionCallingService {
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await performRequestWithRetry(request)
 
         guard let http = response as? HTTPURLResponse else {
             throw OpenAIFunctionCallingError.invalidResponse
@@ -2606,6 +2608,24 @@ actor OpenAIFunctionCallingService {
         }
 
         return argsJSON
+    }
+
+    private func performRequestWithRetry(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        var attempt = 0
+        while true {
+            do {
+                return try await URLSession.shared.data(for: request)
+            } catch {
+                if let urlError = error as? URLError,
+                   urlError.code == .timedOut,
+                   attempt < retryOnTimeoutCount {
+                    attempt += 1
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    continue
+                }
+                throw error
+            }
+        }
     }
 
     private func retrieveContext(
