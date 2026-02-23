@@ -73,6 +73,7 @@ struct DiscoveryView: View {
     @State private var searchResults: [WorkoutSearchResult] = []
     @State private var searchIndex: WorkoutSearchIndex?
     @State private var searchTask: Task<Void, Never>?
+    @State private var searchIndexBuildTask: Task<Void, Never>?
     @State private var isLoadingWorkouts = false
     @State private var selectedEquipment: Set<String> = []
     @State private var selectedLocations: Set<String> = []
@@ -378,11 +379,9 @@ struct DiscoveryView: View {
         }
         .onChange(of: templateStore.templates) { _, _ in
             rebuildSearchIndex()
-            scheduleSearch()
         }
         .onChange(of: variantStore.variants) { _, _ in
             rebuildSearchIndex()
-            scheduleSearch()
         }
         .sheet(isPresented: $showTemplateManager) {
             TemplateVariantManagerView()
@@ -418,7 +417,6 @@ struct DiscoveryView: View {
                 await MainActor.run {
                     isLoadingWorkouts = false
                     rebuildSearchIndex()
-                    scheduleSearch()
                 }
             } catch {
                 await MainActor.run {
@@ -465,7 +463,18 @@ struct DiscoveryView: View {
     }
 
     private func rebuildSearchIndex() {
-        searchIndex = WorkoutSearchIndex(workouts: allWorkouts)
+        searchIndexBuildTask?.cancel()
+        let workoutsForIndex = allWorkouts
+        searchIndexBuildTask = Task {
+            let index = await Task.detached(priority: .userInitiated) {
+                WorkoutSearchIndex(workouts: workoutsForIndex)
+            }.value
+            guard !Task.isCancelled else {
+                return
+            }
+            searchIndex = index
+            scheduleSearch()
+        }
     }
 
     private func evaluateGenerationPolicy(for query: String, with results: [WorkoutSearchResult]) {
