@@ -685,7 +685,7 @@ struct DiscoveryView: View {
         count: Int,
         modelID: String,
         apiKey: String,
-        timeoutSeconds: Double = 45,
+        timeoutSeconds: Double = 120,
         log: @escaping @Sendable (String) -> Void
     ) async throws -> [GeneratedCandidate] {
         try await withThrowingTaskGroup(of: [GeneratedCandidate].self) { group in
@@ -2679,11 +2679,13 @@ actor OpenAIFunctionCallingService {
         }
 
         if let argsJSON = parseJSONObject(from: arguments) {
+            log("\(context) parsed arguments: \(truncate(arguments, limit: 220))")
             return argsJSON
         }
 
         if let recovered = extractJSONObjectString(from: arguments),
            let argsJSON = parseJSONObject(from: recovered) {
+            log("\(context) parsed recovered arguments: \(truncate(recovered, limit: 220))")
             return argsJSON
         }
 
