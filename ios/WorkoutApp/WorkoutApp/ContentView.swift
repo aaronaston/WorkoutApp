@@ -1,6 +1,7 @@
 import Network
 import Markdown
 import SwiftUI
+import UIKit
 
 enum AppTab: Hashable {
     case discover
@@ -2294,6 +2295,7 @@ final class DebugLogStore: ObservableObject {
 struct DebugLogsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var debugLogStore: DebugLogStore
+    @State private var copyStatusMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -2335,9 +2337,27 @@ struct DebugLogsView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    Button("Copy Logs") {
+                        let text = exportLogsAsText(debugLogStore.entries)
+                        UIPasteboard.general.string = text
+                        copyStatusMessage = "Copied \(debugLogStore.entries.count) log entries."
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if let copyStatusMessage {
+                    Text(copyStatusMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemBackground).opacity(0.95))
                 }
             }
         }
@@ -2359,6 +2379,17 @@ struct DebugLogsView: View {
         formatter.dateFormat = "HH:mm:ss"
         return formatter
     }()
+
+    private func exportLogsAsText(_ entries: [DebugLogEntry]) -> String {
+        if entries.isEmpty {
+            return "No debug logs."
+        }
+        return entries.map { entry in
+            let timestamp = Self.timestampFormatter.string(from: entry.timestamp)
+            return "[\(timestamp)] [\(entry.level.rawValue.uppercased())] [\(entry.category)] \(entry.message)"
+        }
+        .joined(separator: "\n")
+    }
 }
 
 @MainActor
