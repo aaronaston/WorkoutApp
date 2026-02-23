@@ -75,6 +75,7 @@ struct DiscoveryView: View {
     @State private var searchIndex: WorkoutSearchIndex?
     @State private var searchTask: Task<Void, Never>?
     @State private var searchIndexBuildTask: Task<Void, Never>?
+    @State private var generationDebounceTask: Task<Void, Never>?
     @State private var isLoadingWorkouts = false
     @State private var selectedEquipment: Set<String> = []
     @State private var selectedLocations: Set<String> = []
@@ -452,6 +453,7 @@ struct DiscoveryView: View {
                     searchResults = []
                     generatedCandidates = []
                     generatedBatchCount = 0
+                    generationDebounceTask?.cancel()
                 }
                 return
             }
@@ -466,8 +468,27 @@ struct DiscoveryView: View {
                     return
                 }
                 searchResults = results
-                evaluateGenerationPolicy(for: trimmed, with: results)
+                scheduleGenerationEvaluation(for: trimmed, with: results, revision: revision)
             }
+        }
+    }
+
+    private func scheduleGenerationEvaluation(
+        for query: String,
+        with results: [WorkoutSearchResult],
+        revision: Int
+    ) {
+        generationDebounceTask?.cancel()
+        generationDebounceTask = Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+            let currentQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard revision == searchRevision, currentQuery == query else {
+                return
+            }
+            evaluateGenerationPolicy(for: query, with: results)
         }
     }
 
