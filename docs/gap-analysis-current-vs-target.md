@@ -20,7 +20,7 @@ Planning source of truth:
 ## 2) AI refinement workflow quality
 - Target: iterative pre-start AI refinement feels responsive and controllable.
 - Current: generation and adjustment flows exist.
-- Gap: streaming, interruption, and iterative context carry-forward need completion and polish.
+- Gap: stream-first behavior, interruption, and iterative context carry-forward need completion and polish.
 
 ## 3) Generation alignment with curated workout style
 - Target: generated/refined plans follow canonical headings and movement patterns from the curated library.
@@ -30,7 +30,7 @@ Planning source of truth:
 ## 4) Discovery and generation performance/relevance
 - Target: planning and discovery are fast and consistently relevant for daily use.
 - Current: unified discovery + generation orchestration is in place.
-- Gap: latency, ranking quality, and slow-provider reliability require a focused tuning pass.
+- Gap: initial generation must be stream-first, and latency/ranking/slow-provider reliability require a focused tuning pass.
 
 ## 5) HealthKit continuity (phone-first)
 - Target: completed sessions from this app appear reliably in Health/Fitness.

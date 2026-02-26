@@ -65,6 +65,7 @@ Use this alongside target-state docs:
 ## Partially Implemented Areas
 - `ExecutionTimer` supports multiple timer modes in model code, but session UI currently displays a single overall elapsed timer and does not expose timer-mode-specific controls.
 - HealthKit/watch message models exist, but end-to-end integration flow is not active in the app runtime.
+- LLM interactions are not yet consistently stream-first across initial generation and refinement flows.
 - Live generation reliability/performance still needs improvement for slower provider responses and prompt/tooling quality tuning.
 
 ## Operational/Build State

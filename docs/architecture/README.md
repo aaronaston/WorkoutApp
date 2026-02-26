@@ -68,6 +68,8 @@ For implementation reality, see:
   intent while enriching prompt context from preferences/history/current condition.
 - LLM generation uses a bounded two-round loop: initial generation, relevant-context retrieval,
   refinement, then deterministic validation with at most one repair attempt.
+- User-facing LLM interactions are stream-first: initial generation, additional generation batches,
+  and refinements must render incremental output and support interrupt/cancel.
 - Discovery UI must label candidate origin (rules vs generated) and explanation source.
 
 ### Execution Engine Notes

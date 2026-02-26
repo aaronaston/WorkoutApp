@@ -8,6 +8,7 @@
 - Preserve deterministic retrieval priority.
 - Introduce controlled generation triggers (intent/low-confidence/detent).
 - Support conversational refinement and optional persistence.
+- Make all LLM interactions stream-first with interrupt/cancel support.
 
 ## Feature Decomposition
 
@@ -42,10 +43,13 @@
   4. Return candidates with explanation metadata
 - Context summaries can be built with LLM summarization calls before generation.
 - Cache context summary artifacts for a short TTL to avoid repeated preprocessing calls.
+- Generation responses stream partial output to the UI as tokens/chunks arrive.
+- Initial generation and detent-triggered additional generation both use the same stream-first contract.
 
 ### Feature E - Refinement Loop and Persistence
 - Selecting any workout opens refinement panel/thread.
 - Each follow-up prompt produces revised candidate tied to parent workout/candidate.
+- Refinement responses stream incrementally and can be interrupted/cancelled by the user.
 - Model provenance:
   - `baseWorkoutID`
   - `revisionPrompt`
@@ -87,6 +91,10 @@
 - `GenerationPolicy.shouldGenerate(...) -> GenerationDecision`
 - `GenerationService.generate(...) async -> [GeneratedCandidate]`
 
+Streaming contract (applies to all user-facing LLM operations):
+- `GenerationService.streamGenerate(...) async -> AsyncThrowingStream<GenerationChunk, Error>`
+- `GenerationService.cancelGeneration(requestID: String)`
+
 ## Rollout Plan
 1. Build unified UI + retrieval confidence plumbing.
 2. Add generation policy and bottom-detent trigger.
@@ -110,6 +118,8 @@
 - Integration tests:
   - retrieval-only mode when LLM unavailable
   - detent-triggered generation batch append
+  - initial generation streams incrementally and supports cancel
+  - refinement streams incrementally and supports cancel
   - revision chain and optional save
 - UI tests:
   - "Plan your workout" label/placeholder and section rendering

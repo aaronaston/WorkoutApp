@@ -41,6 +41,15 @@ Replace the current search-first interaction with a unified discovery experience
   - generation starts immediately
   - additional generation occurs on bottom-detent push
 
+### FR-3a Streaming Interaction Policy
+- All user-facing LLM interactions must be stream-first.
+- Applies to:
+  - initial generation from Plan your workout
+  - follow-up generation batches
+  - refinement/adjustment interactions
+- Users must be able to interrupt/cancel an in-flight streaming interaction.
+- UI must render incremental output as it arrives (no wait-until-complete behavior).
+
 ### FR-4 Generated Result Behavior
 - Generate up to 5 options per request (target: one screen).
 - Options should vary while preserving the query theme.
@@ -84,6 +93,8 @@ The generation path should use augmented context from:
 ## Acceptance Criteria (Initial Release)
 - Entering "quick upper body workout" shows existing matches first.
 - Generated options appear after existing matches and include `New` marker.
+- Initial generation and refinements stream visible incremental output.
+- User can interrupt/cancel streaming generation safely.
 - Pushing past list bottom requests additional generated options.
 - In retrieval-only situations (LLM unavailable), discovery still returns existing matches.
 - User can refine a selected workout with additional prompts before starting.
