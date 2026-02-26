@@ -39,6 +39,7 @@ struct WorkoutAppApp: App {
             ContentView()
                 .environmentObject(preferencesStore)
                 .environmentObject(workoutSessionStore)
+                .environmentObject(workoutArtifactStore)
                 .environmentObject(sessionStateStore)
                 .environmentObject(workoutTemplateStore)
                 .environmentObject(workoutVariantStore)

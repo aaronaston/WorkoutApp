@@ -402,6 +402,146 @@ final class HistorySessionDiscoveryTests: XCTestCase {
     }
 }
 
+final class HistorySessionResolutionTests: XCTestCase {
+    private func makeWorkout(
+        id: WorkoutID,
+        source: WorkoutSource,
+        title: String,
+        sections: [WorkoutSection]?,
+        sourceMarkdown: String = ""
+    ) -> WorkoutDefinition {
+        WorkoutDefinition(
+            id: id,
+            source: source,
+            sourceID: id,
+            sourceURL: nil,
+            title: title,
+            summary: nil,
+            metadata: WorkoutMetadata(
+                durationMinutes: nil,
+                focusTags: [],
+                equipmentTags: [],
+                locationTag: nil,
+                otherTags: []
+            ),
+            content: WorkoutContent(sourceMarkdown: sourceMarkdown, parsedSections: sections, notes: nil),
+            timerConfiguration: nil,
+            versionHash: nil,
+            createdAt: nil,
+            updatedAt: nil
+        )
+    }
+
+    private func makeSession(workout: WorkoutDefinition) -> WorkoutSession {
+        WorkoutSession(
+            id: UUID(),
+            workout: WorkoutReference(
+                id: workout.id,
+                source: workout.source,
+                title: workout.title,
+                versionHash: workout.versionHash
+            ),
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            endedAt: Date(timeIntervalSince1970: 1_600),
+            durationSeconds: 600,
+            timerMode: .stopwatch,
+            logEntries: [],
+            notes: nil,
+            perceivedExertion: nil,
+            workoutArtifactID: "artifact-\(workout.id)",
+            workoutSnapshot: workout
+        )
+    }
+
+    func testGeneratedSessionUsesSnapshotWhenLookupMisses() {
+        let snapshot = makeWorkout(
+            id: "generated-1",
+            source: .generated,
+            title: "Generated Workout",
+            sections: [WorkoutSection(title: "Main", items: [WorkoutItem(name: "Burpees")])]
+        )
+        let session = makeSession(workout: snapshot)
+
+        let resolved = resolvedHistoryWorkout(for: session, workoutLookup: [:])
+
+        XCTAssertEqual(resolved.id, snapshot.id)
+        XCTAssertEqual(resolved.content.parsedSections?.first?.title, "Main")
+        XCTAssertEqual(resolved.content.parsedSections?.first?.items.first?.name, "Burpees")
+    }
+
+    func testKnowledgeBaseSessionPrefersLookupWhenAvailable() {
+        let snapshot = makeWorkout(
+            id: "kb-1",
+            source: .knowledgeBase,
+            title: "Snapshot Title",
+            sections: nil
+        )
+        let session = makeSession(workout: snapshot)
+        let lookupWorkout = makeWorkout(
+            id: "kb-1",
+            source: .knowledgeBase,
+            title: "Lookup Title",
+            sections: [WorkoutSection(title: "Warmup", items: [WorkoutItem(name: "Air Squats")])]
+        )
+
+        let resolved = resolvedHistoryWorkout(for: session, workoutLookup: ["kb-1": lookupWorkout])
+
+        XCTAssertEqual(resolved.title, "Lookup Title")
+        XCTAssertEqual(resolved.content.parsedSections?.first?.title, "Warmup")
+    }
+
+    func testGeneratedSessionFallsBackToArtifactWhenSnapshotSectionsMissing() {
+        let snapshot = makeWorkout(
+            id: "generated-2",
+            source: .generated,
+            title: "Generated Snapshot",
+            sections: nil
+        )
+        var session = makeSession(workout: snapshot)
+        session.workoutArtifactID = "artifact-generated-2"
+
+        let artifactWorkout = makeWorkout(
+            id: "generated-2",
+            source: .generated,
+            title: "Generated From Artifact",
+            sections: [WorkoutSection(title: "Main", items: [WorkoutItem(name: "Thrusters")])]
+        )
+
+        let resolved = resolvedHistoryWorkout(
+            for: session,
+            workoutLookup: [:],
+            artifactLookup: ["artifact-generated-2": artifactWorkout]
+        )
+
+        XCTAssertEqual(resolved.title, "Generated From Artifact")
+        XCTAssertEqual(resolved.content.parsedSections?.first?.title, "Main")
+        XCTAssertEqual(resolved.content.parsedSections?.first?.items.first?.name, "Thrusters")
+    }
+
+    func testSnapshotFallsBackToMarkdownParsingWhenSectionsMissing() {
+        let markdown = """
+        # Generated Plan
+
+        ## Main
+        - Burpees — 3 x 10
+        """
+        let snapshot = makeWorkout(
+            id: "generated-3",
+            source: .generated,
+            title: "Generated Plan",
+            sections: nil,
+            sourceMarkdown: markdown
+        )
+        let session = makeSession(workout: snapshot)
+
+        let resolved = resolvedHistoryWorkout(for: session, workoutLookup: [:])
+
+        XCTAssertEqual(resolved.content.parsedSections?.first?.title, "Main")
+        XCTAssertEqual(resolved.content.parsedSections?.first?.items.first?.name, "Burpees")
+        XCTAssertEqual(resolved.content.parsedSections?.first?.items.first?.prescription, "3 x 10")
+    }
+}
+
 final class WorkoutAppInfoPlistTests: XCTestCase {
     func testDeviceFamilyIncludesIphoneAndIpad() throws {
         let families = try XCTUnwrap(

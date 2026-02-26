@@ -11,14 +11,15 @@ Legacy Beads files may still exist for historical context, but they are read-onl
 
 - Find ready work: `gh issue list --state open --label "status:ready"`
 - View issue details: `gh issue view <number>`
-- Start work: assign yourself + set status labels
+- Start work: assign yourself + set `status:in-progress` before making code changes
+- Ready for owner validation: set `status:in-review` after tests pass
 - Close work: `gh issue close <number> --comment "Completed in <commit-or-pr>"`
 
 Recommended labels:
 
 - Type: `type:feature`, `type:bug`, `type:task`
-- Priority: `priority:P0`, `priority:P1`, `priority:P2`, `priority:P3`, `priority:P4`
-- Status: `status:ready`, `status:in-progress`, `status:blocked`
+- Release: `release:v1`, `release:vNext`
+- Status: `status:ready`, `status:in-progress`, `status:in-review`, `status:blocked`
 
 ## GitHub Workflow Norms
 
@@ -26,7 +27,17 @@ Recommended labels:
 - Branch naming: `<agent>/<issue-or-scope>` (example: `agent-a/123-hybrid-retrieval`).
 - Link issue in commits/PRs using `#<issue-number>`.
 - Record blockers directly on the issue and apply `status:blocked`.
+- Required status flow:
+  - before starting implementation: set `status:in-progress`
+  - after implementation + tests are complete and awaiting product-owner validation: set `status:in-review`
+  - when accepted/merged: close the issue (and remove stale status labels if needed)
 - Track sequencing with issue links and explicit `Depends on #<issue>` in issue body.
+- For issue comments/close comments that may contain backticks or special characters, avoid inline shell quoting. Use `--body-file -` with a single-quoted heredoc:
+  ```bash
+  gh issue comment <number> --body-file - <<'EOF'
+  <comment text>
+  EOF
+  ```
 
 ## Multi-Agent Workflow (Git Worktrees)
 
@@ -102,6 +113,7 @@ Then announce integration complete so another agent can proceed.
 Work is not complete until changes are pushed and remote state is current.
 
 1. Update issue status/notes in GitHub (`status:in-progress` -> remove + close issue when done).
+   - If work is complete and waiting on product-owner testing, use `status:in-review`.
 2. Run quality gates for changed code (tests/lint/build).
 3. `git status` (verify intended files only).
 4. `git add <files>` and commit.

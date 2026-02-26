@@ -72,11 +72,12 @@ struct DiscoveryView: View {
     @State private var loadError: String?
     @State private var hasLoaded = false
     @State private var searchQuery = ""
+    @State private var submittedSearchQuery = ""
+    @State private var submittedGenerationQuery: String?
     @State private var searchResults: [WorkoutSearchResult] = []
     @State private var searchIndex: WorkoutSearchIndex?
     @State private var searchTask: Task<Void, Never>?
     @State private var searchIndexBuildTask: Task<Void, Never>?
-    @State private var generationDebounceTask: Task<Void, Never>?
     @State private var isLoadingWorkouts = false
     @State private var selectedEquipment: Set<String> = []
     @State private var selectedLocations: Set<String> = []
@@ -137,6 +138,11 @@ struct DiscoveryView: View {
         preferencesStore.llmRuntimeState(isNetworkAvailable: networkMonitor.isNetworkAvailable) == .ready
     }
 
+    private var hasSubmittedCurrentQuery: Bool {
+        let currentQuery = searchQueryText(from: searchQuery).trimmingCharacters(in: .whitespacesAndNewlines)
+        return !submittedSearchQuery.isEmpty && currentQuery == submittedSearchQuery
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -149,7 +155,11 @@ struct DiscoveryView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                SearchField(text: $searchQuery, placeholder: "Plan your workout")
+                SearchField(
+                    text: $searchQuery,
+                    placeholder: "Plan your workout",
+                    onSubmit: submitPlanQuery
+                )
 
                 HStack {
                     Button("Manage Templates & Variants") {
@@ -188,7 +198,7 @@ struct DiscoveryView: View {
                 } else if workouts.isEmpty {
                     ProgressView("Loading workouts...")
                         .frame(maxWidth: .infinity, alignment: .center)
-                } else if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                } else if hasSubmittedCurrentQuery {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Matched Workouts")
                             .font(.headline)
@@ -211,7 +221,7 @@ struct DiscoveryView: View {
                             }
                         }
 
-                        if !generatedWorkouts.isEmpty {
+                        if submittedGenerationQuery != nil, !generatedWorkouts.isEmpty {
                             Text("Generated")
                                 .font(.headline)
                                 .padding(.top, 8)
@@ -230,27 +240,29 @@ struct DiscoveryView: View {
                             }
                         }
 
-                        if llmAvailable {
-                            Button {
-                                loadMoreGenerated()
-                            } label: {
-                                Text(isGenerating ? "Generating..." : "Generate More Ideas")
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.accentColor.opacity(0.15))
-                                    .cornerRadius(12)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(isGenerating)
-                            if let generationStatusNote, !generationStatusNote.isEmpty {
-                                Text(generationStatusNote)
+                        if submittedGenerationQuery != nil {
+                            if llmAvailable {
+                                Button {
+                                    loadMoreGenerated()
+                                } label: {
+                                    Text(isGenerating ? "Generating..." : "Generate More Ideas")
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(Color.accentColor.opacity(0.15))
+                                        .cornerRadius(12)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isGenerating)
+                                if let generationStatusNote, !generationStatusNote.isEmpty {
+                                    Text(generationStatusNote)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } else {
+                                Text("LLM unavailable. Discovery is retrieval-only right now.")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                        } else {
-                            Text("LLM unavailable. Discovery is retrieval-only right now.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
                         }
                     }
                 } else {
@@ -381,9 +393,16 @@ struct DiscoveryView: View {
         .task {
             loadWorkoutsIfNeeded()
         }
-        .onChange(of: searchQuery) { _, _ in
-            searchRevision += 1
-            scheduleSearch()
+        .onChange(of: searchQuery) { _, newValue in
+            if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                searchTask?.cancel()
+                submittedSearchQuery = ""
+                submittedGenerationQuery = nil
+                searchResults = []
+                generatedCandidates = []
+                generatedBatchCount = 0
+                generationStatusNote = nil
+            }
         }
         .onChange(of: templateStore.templates) { _, _ in
             rebuildSearchIndex()
@@ -440,21 +459,17 @@ struct DiscoveryView: View {
 
     private func scheduleSearch() {
         searchTask?.cancel()
-        let query = searchQuery
+        let query = submittedSearchQuery
         let index = searchIndex
         let revision = searchRevision
         searchTask = Task {
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            guard !Task.isCancelled else {
-                return
-            }
             let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, let index else {
                 await MainActor.run {
                     searchResults = []
                     generatedCandidates = []
                     generatedBatchCount = 0
-                    generationDebounceTask?.cancel()
+                    generationStatusNote = nil
                 }
                 return
             }
@@ -469,27 +484,7 @@ struct DiscoveryView: View {
                     return
                 }
                 searchResults = results
-                scheduleGenerationEvaluation(for: trimmed, with: results, revision: revision)
             }
-        }
-    }
-
-    private func scheduleGenerationEvaluation(
-        for query: String,
-        with results: [WorkoutSearchResult],
-        revision: Int
-    ) {
-        generationDebounceTask?.cancel()
-        generationDebounceTask = Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            guard !Task.isCancelled else {
-                return
-            }
-            let currentQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard revision == searchRevision, currentQuery == query else {
-                return
-            }
-            evaluateGenerationPolicy(for: query, with: results)
         }
     }
 
@@ -508,45 +503,60 @@ struct DiscoveryView: View {
         }
     }
 
-    private func evaluateGenerationPolicy(for query: String, with results: [WorkoutSearchResult]) {
-        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else {
-            generatedCandidates = []
-            generatedBatchCount = 0
-            return
-        }
-
-        let intent = generationPolicy.classifyIntent(query: normalized)
-        let confidence = generationPolicy.retrievalConfidence(for: results)
-        let decision = generationPolicy.initialDecision(
-            intent: intent,
-            retrievalConfidence: confidence,
-            llmAvailable: llmAvailable
-        )
-
-        if generatedCandidates.first?.originQuery != normalized {
-            generatedCandidates = []
-            generatedBatchCount = 0
-        }
-
-        if decision.shouldGenerate, generatedCandidates.isEmpty {
-            generateCandidates(query: normalized, trigger: decision.trigger ?? .initialQuery)
-            return
-        }
-
-        generatedCandidateStore.saveCandidates(generatedCandidates, forQuery: normalized)
-    }
-
     private func loadMoreGenerated() {
-        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        guard let query = submittedGenerationQuery else {
             return
         }
         let decision = generationPolicy.loadMoreDecision(llmAvailable: llmAvailable)
         guard decision.shouldGenerate else {
             return
         }
-        generateCandidates(query: trimmed, trigger: .bottomDetent)
+        generateCandidates(query: query, trigger: .bottomDetent)
+    }
+
+    private func searchQueryText(from rawQuery: String) -> String {
+        generationPrompt(from: rawQuery) ?? rawQuery
+    }
+
+    private func generationPrompt(from rawQuery: String) -> String? {
+        let trimmed = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased().hasPrefix("ai ") else {
+            return nil
+        }
+        let promptStart = trimmed.index(trimmed.startIndex, offsetBy: 3)
+        let prompt = String(trimmed[promptStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return prompt.isEmpty ? nil : prompt
+    }
+
+    private func submitPlanQuery() {
+        let trimmedQuery = searchQueryText(from: searchQuery).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            submittedSearchQuery = ""
+            submittedGenerationQuery = nil
+            searchResults = []
+            generatedCandidates = []
+            generatedBatchCount = 0
+            generationStatusNote = nil
+            return
+        }
+        submittedSearchQuery = trimmedQuery
+        searchRevision += 1
+        scheduleSearch()
+
+        guard let generationQuery = generationPrompt(from: searchQuery) else {
+            submittedGenerationQuery = nil
+            generatedCandidates = []
+            generatedBatchCount = 0
+            generationStatusNote = nil
+            return
+        }
+        submittedGenerationQuery = generationQuery
+        if generatedCandidates.first?.originQuery != generationQuery {
+            generatedCandidates = []
+            generatedBatchCount = 0
+            generationStatusNote = nil
+        }
+        generateCandidates(query: generationQuery, trigger: .initialQuery)
     }
 
     private func generateCandidates(query: String, trigger: GenerationTrigger) {
@@ -1605,9 +1615,64 @@ struct SessionView: View {
 
 }
 
+func resolvedHistoryWorkout(
+    for session: WorkoutSession,
+    workoutLookup: [WorkoutID: WorkoutDefinition],
+    artifactLookup: [WorkoutArtifactID: WorkoutDefinition] = [:]
+) -> WorkoutDefinition {
+    if session.workout.source == .knowledgeBase,
+       let knownWorkout = workoutLookup[session.workout.id] {
+        return workoutWithParsedSectionsFallback(knownWorkout)
+    }
+
+    let snapshotWorkout = workoutWithParsedSectionsFallback(session.workoutSnapshot)
+    if hasStructuredSections(snapshotWorkout) {
+        return snapshotWorkout
+    }
+
+    if let artifactWorkout = artifactLookup[session.workoutArtifactID] {
+        return workoutWithParsedSectionsFallback(artifactWorkout)
+    }
+
+    return snapshotWorkout
+}
+
+private func hasStructuredSections(_ workout: WorkoutDefinition) -> Bool {
+    guard let sections = workout.content.parsedSections else {
+        return false
+    }
+    return !sections.isEmpty
+}
+
+private func workoutWithParsedSectionsFallback(_ workout: WorkoutDefinition) -> WorkoutDefinition {
+    if hasStructuredSections(workout) {
+        return workout
+    }
+
+    let markdown = workout.content.sourceMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !markdown.isEmpty else {
+        return workout
+    }
+
+    let parsed = WorkoutMarkdownParser().parse(
+        markdown: markdown,
+        id: workout.id,
+        sourceURL: workout.sourceURL,
+        versionHash: workout.versionHash
+    )
+    guard hasStructuredSections(parsed) else {
+        return workout
+    }
+
+    var hydrated = workout
+    hydrated.content.parsedSections = parsed.content.parsedSections
+    return hydrated
+}
+
 struct HistoryView: View {
     @EnvironmentObject private var sessionState: SessionStateStore
     @EnvironmentObject private var sessionStore: WorkoutSessionStore
+    @EnvironmentObject private var artifactStore: WorkoutArtifactStore
     @Binding var selectedTab: AppTab
     @State private var workoutLookup: [WorkoutID: WorkoutDefinition] = [:]
     @State private var searchQuery = ""
@@ -1623,6 +1688,10 @@ struct HistoryView: View {
 
     private var allSessions: [WorkoutSession] {
         sessionStore.sessions
+    }
+
+    private var artifactLookup: [WorkoutArtifactID: WorkoutDefinition] {
+        Dictionary(uniqueKeysWithValues: artifactStore.artifacts.map { ($0.id, $0.workout) })
     }
 
     private var sessions: [WorkoutSession] {
@@ -1816,32 +1885,10 @@ struct HistoryView: View {
     }
 
     private func resolveWorkout(for session: WorkoutSession) -> WorkoutDefinition {
-        if let knownWorkout = workoutLookup[session.workout.id] {
-            return knownWorkout
-        }
-        return WorkoutDefinition(
-            id: session.workout.id,
-            source: session.workout.source,
-            sourceID: session.workout.id,
-            sourceURL: nil,
-            title: session.workout.title,
-            summary: nil,
-            metadata: WorkoutMetadata(
-                durationMinutes: nil,
-                focusTags: [],
-                equipmentTags: [],
-                locationTag: nil,
-                otherTags: []
-            ),
-            content: WorkoutContent(
-                sourceMarkdown: "",
-                parsedSections: nil,
-                notes: nil
-            ),
-            timerConfiguration: nil,
-            versionHash: session.workout.versionHash,
-            createdAt: nil,
-            updatedAt: nil
+        resolvedHistoryWorkout(
+            for: session,
+            workoutLookup: workoutLookup,
+            artifactLookup: artifactLookup
         )
     }
 
@@ -1947,6 +1994,10 @@ struct SessionDetailView: View {
         return formattedDuration(max(0, seconds))
     }
 
+    private var workoutSnapshot: WorkoutDefinition {
+        session.workoutSnapshot
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -2001,6 +2052,20 @@ struct SessionDetailView: View {
                             .cornerRadius(12)
                     }
                     .buttonStyle(.plain)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Workout")
+                        .font(.headline)
+
+                    if let sections = workoutSnapshot.content.parsedSections, !sections.isEmpty {
+                        ForEach(sections) { section in
+                            WorkoutSectionCard(section: section)
+                        }
+                    } else {
+                        Text("No structured sections parsed yet.")
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 if let notes = session.notes, !notes.isEmpty {
@@ -2930,6 +2995,8 @@ actor OpenAIFunctionCallingService {
 struct SearchField: View {
     @Binding var text: String
     let placeholder: String
+    var onSubmit: (() -> Void)? = nil
+    @FocusState private var isFieldFocused: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -2938,6 +3005,14 @@ struct SearchField: View {
             TextField(placeholder, text: $text)
                 .textInputAutocapitalization(.never)
                 .disableAutocorrection(true)
+                .focused($isFieldFocused)
+                .submitLabel(.go)
+                .onSubmit {
+                    onSubmit?()
+                    Task { @MainActor in
+                        isFieldFocused = true
+                    }
+                }
             if !text.isEmpty {
                 Button {
                     text = ""
