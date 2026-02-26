@@ -1,4 +1,4 @@
-# Current Implementation Snapshot (As of 2026-02-22)
+# Current Implementation Snapshot (As of 2026-02-23)
 
 This document describes what is implemented in the codebase today.
 Use this alongside target-state docs:
@@ -21,6 +21,8 @@ Use this alongside target-state docs:
 - Supports recommendation ranking via `WorkoutRecommendationEngine`.
 - Supports filter chips (equipment, duration, location).
 - Shows recommendation reasons in list/detail views.
+- Supports unified "Plan your workout" query flow that runs retrieval first and triggers live generation when retrieval confidence is low.
+- Debounced plan query execution (~2 seconds) before retrieval/generation trigger.
 
 ### Session Execution
 - Session lifecycle supported through `SessionStateStore`:
@@ -31,6 +33,7 @@ Use this alongside target-state docs:
   - draft persistence and restore across app background/relaunch
 - Short-session end guard (under 5 minutes) is implemented as a bottom sheet.
 - Ending a session routes users to History.
+- Generated workout sessions can be started from discovery and saved into history.
 
 ### History
 - Stores completed sessions in `WorkoutSessionStore` (JSON under Application Support).
@@ -44,6 +47,11 @@ Use this alongside target-state docs:
   - Resume
   - Adjust + Start
 - Resume uses session ID upsert semantics (single history record is updated, not duplicated).
+- Known bug: "Do Again" for some generated workouts can start an empty session payload (`#44`).
+
+### Templates and Variants
+- Templates/variants management entry point exists in discovery ("Manage Templates & Variants").
+- Template and variant lifecycle was implemented as first-class app flow (`#36`).
 
 ### Settings and LLM Policy Surface
 - User preferences persist locally in `UserPreferencesStore` (JSON).
@@ -51,11 +59,13 @@ Use this alongside target-state docs:
 - API key storage uses iOS Keychain.
 - Runtime LLM readiness state exists (disabled/missing key/offline/ready).
 - Network availability monitor exists to gate LLM availability state.
+- Live workout generation uses OpenAI tool/function-calling with bounded retries and deterministic fallback behavior.
+- Live generation status and errors are captured in an in-app Debug Logs screen, including "Copy Logs".
 
 ## Partially Implemented Areas
 - `ExecutionTimer` supports multiple timer modes in model code, but session UI currently displays a single overall elapsed timer and does not expose timer-mode-specific controls.
-- Domain models for templates/variants/external/generated workouts exist, but first-class create/edit/manage flows are not yet implemented in UI/storage.
 - HealthKit/watch message models exist, but end-to-end integration flow is not active in the app runtime.
+- Live generation reliability/performance still needs improvement for slower provider responses and prompt/tooling quality tuning (`#6`, `#43`, `#44`).
 
 ## Operational/Build State
 - Simulator policy is arm64-only.

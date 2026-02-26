@@ -1,4 +1,4 @@
-# Gap Analysis: Current State vs Target State (As of 2026-02-22)
+# Gap Analysis: Current State vs Target State (As of 2026-02-23)
 
 Target references:
 - `readme.md`
@@ -9,21 +9,21 @@ Target references:
 
 ## 1) Unified "Plan your workout" experience
 - Target: one unified input for retrieval + generation with policy-based generation triggers.
-- Current: discovery is still search-first with ranked recommendations; no unified plan-orchestrator flow.
-- Gap: `DiscoveryOrchestrator`, intent classification, and trigger policy are not implemented.
-- Tickets: #34 (primary), #6 (supporting tuning epic)
+- Current: implemented and shipped via unified plan orchestration in discovery (`#34` closed).
+- Residual gap: query intent/ranking/generation trigger quality and latency still need iterative tuning.
+- Tickets: #6 (tuning), #44 (Do Again generated-session regression)
 
 ## 2) LLM generation pipeline
 - Target: bounded generation/refinement/validation loop with explicit generated candidates.
-- Current: settings and policy toggles exist, but generation path is not wired in UI/services.
-- Gap: no production generation service, no refinement thread, no generated candidate lifecycle.
-- Tickets: #35
+- Current: implemented and shipped with live function-calling + deterministic fallback (`#35` closed).
+- Residual gap: robustness tuning (timeouts/provider payload quality), prompt customization, and content quality iteration.
+- Tickets: #43 (custom instructions), #6 (tuning)
 
 ## 3) Templates and variants lifecycle
 - Target: copy/edit/derive workflows with provenance-visible customization.
-- Current: model types exist (`WorkoutTemplate`, `WorkoutVariant`) but no full template/variant management UX or dedicated stores.
-- Gap: template CRUD, variant editing, and provenance-first editor flows are missing.
-- Tickets: #36 (lifecycle management), #30 (pre-start edit flow), #33 (artifact/provenance foundation)
+- Current: template/variant lifecycle management is implemented (`#36` closed).
+- Residual gap: broader pre-start editing and deeper provenance/editor capabilities.
+- Tickets: #30 (pre-start edit flow), #33 (artifact/provenance)
 
 ## 4) External workout sources
 - Target: fetch/cache/import from configurable external sources.
@@ -68,8 +68,8 @@ Target references:
 - Tickets: #41
 
 ## Suggested Next Milestones
-1. Land unified discovery orchestration (retrieval + policy-driven generation trigger).
-2. Add generated candidate lifecycle (new/refine/save) and provenance chain.
-3. Implement template/variant CRUD and editing UX.
-4. Deliver timer-mode UI parity with `ExecutionTimer` model capabilities.
+1. Fix generated-workout repeat-session regression (`#44`) to stabilize session continuity.
+2. Deliver timer-mode UI parity with `ExecutionTimer` model capabilities (`#38`).
+3. Expand in-session logging + progress analytics (`#39`).
+4. Add user-editable generation instructions (`#43`) and continue discovery/generation tuning (`#6`).
 5. Implement one integration end-to-end first (Calendar or HealthKit) with deterministic fallback behavior.
