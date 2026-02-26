@@ -12,8 +12,18 @@ This folder contains architecture and decision documentation.
   - `docs/current-state.md`
 - Current-vs-target gaps:
   - `docs/gap-analysis-current-vs-target.md`
-- Execution roadmap:
-  - `docs/execution-plan.md`
+
+## Execution Planning (GitHub Source of Truth)
+- Milestone: `First releasable`
+- Labels: `release:v1`, `release:vNext`, `status:*`, `type:*`
+- Dependencies: `Depends on #<issue>` in issue bodies
+- Release gate issue: `#51`
+
+Working flow:
+1. Filter open issues by milestone `First releasable` and label `release:v1`.
+2. Prioritize issues with no unmet `Depends on` blockers.
+3. Move issue status through `status:ready` -> `status:in-progress` -> `status:in-review` -> close.
+4. Keep deferrals labeled `release:vNext`.
 
 ## Structure
 - architecture/ : system architecture references and artifacts

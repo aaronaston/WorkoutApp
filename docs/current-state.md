@@ -1,4 +1,4 @@
-# Current Implementation Snapshot (As of 2026-02-23)
+# Current Implementation Snapshot (As of 2026-02-26)
 
 This document describes what is implemented in the codebase today.
 Use this alongside target-state docs:
@@ -47,11 +47,11 @@ Use this alongside target-state docs:
   - Resume
   - Adjust + Start
 - Resume uses session ID upsert semantics (single history record is updated, not duplicated).
-- Known bug: "Do Again" for some generated workouts can start an empty session payload (`#44`).
+- Known bug: some generated-workout repeat paths can lose structured sections when source resolution falls back incorrectly.
 
 ### Templates and Variants
 - Templates/variants management entry point exists in discovery ("Manage Templates & Variants").
-- Template and variant lifecycle was implemented as first-class app flow (`#36`).
+- Template and variant lifecycle is implemented as a first-class app flow.
 
 ### Settings and LLM Policy Surface
 - User preferences persist locally in `UserPreferencesStore` (JSON).
@@ -65,7 +65,7 @@ Use this alongside target-state docs:
 ## Partially Implemented Areas
 - `ExecutionTimer` supports multiple timer modes in model code, but session UI currently displays a single overall elapsed timer and does not expose timer-mode-specific controls.
 - HealthKit/watch message models exist, but end-to-end integration flow is not active in the app runtime.
-- Live generation reliability/performance still needs improvement for slower provider responses and prompt/tooling quality tuning (`#6`, `#43`, `#44`).
+- Live generation reliability/performance still needs improvement for slower provider responses and prompt/tooling quality tuning.
 
 ## Operational/Build State
 - Simulator policy is arm64-only.
