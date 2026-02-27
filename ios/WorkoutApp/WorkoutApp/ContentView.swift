@@ -85,6 +85,7 @@ struct DiscoveryView: View {
     @State private var generatedCandidates: [GeneratedCandidate] = []
     @State private var generatedBatchCount = 0
     @State private var isGenerating = false
+    @State private var generationTask: Task<Void, Never>?
     @State private var showTemplateManager = false
     @State private var searchRevision = 0
     @State private var generationStatusNote: String?
@@ -175,6 +176,32 @@ struct DiscoveryView: View {
                         ProgressView()
                             .controlSize(.small)
                     }
+                }
+
+                if isGenerating {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .controlSize(.small)
+                        AnimatedStatusText(baseText: generationStatusNote ?? "Generating")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            cancelGeneration()
+                        } label: {
+                            Image(systemName: "stop.fill")
+                                .font(.caption)
+                                .padding(8)
+                                .background(Color.red.opacity(0.15))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Stop generation")
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(12)
                 }
 
                 if isLoadingWorkouts, !workouts.isEmpty {
@@ -531,6 +558,7 @@ struct DiscoveryView: View {
     private func submitPlanQuery() {
         let trimmedQuery = searchQueryText(from: searchQuery).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
+            cancelGeneration()
             submittedSearchQuery = ""
             submittedGenerationQuery = nil
             searchResults = []
@@ -544,6 +572,7 @@ struct DiscoveryView: View {
         scheduleSearch()
 
         guard let generationQuery = generationPrompt(from: searchQuery) else {
+            cancelGeneration()
             submittedGenerationQuery = nil
             generatedCandidates = []
             generatedBatchCount = 0
@@ -552,6 +581,7 @@ struct DiscoveryView: View {
         }
         submittedGenerationQuery = generationQuery
         if generatedCandidates.first?.originQuery != generationQuery {
+            cancelGeneration()
             generatedCandidates = []
             generatedBatchCount = 0
             generationStatusNote = nil
@@ -575,19 +605,29 @@ struct DiscoveryView: View {
             category: "generation",
             message: "Starting batch \(baseBatch + 1) for query '\(query)' with trigger '\(trigger.rawValue)'."
         )
-        Task(priority: .userInitiated) {
+        generationStatusNote = "Streaming generated ideas..."
+        generationTask = Task(priority: .userInitiated) {
             let result = await generatePipelineCandidates(
                 query: query,
                 batchIndex: baseBatch,
                 trigger: trigger,
                 contextWorkouts: contextWorkouts
-            )
+            ) { candidate in
+                Task { @MainActor in
+                    guard submittedGenerationQuery == query else { return }
+                    if !generatedCandidates.contains(where: { $0.id == candidate.id }) {
+                        generatedCandidates.append(candidate)
+                    }
+                }
+            }
+            guard !Task.isCancelled else { return }
             let newValues = result.candidates.filter { candidate in
                 !generatedCandidates.contains(where: { $0.id == candidate.id })
             }
             generatedCandidates.append(contentsOf: newValues)
             generatedBatchCount += 1
             isGenerating = false
+            generationTask = nil
             generatedCandidateStore.saveCandidates(generatedCandidates, forQuery: query)
             generationStatusNote = result.note
             debugLogStore.log(
@@ -595,6 +635,16 @@ struct DiscoveryView: View {
                 category: "generation",
                 message: result.note
             )
+        }
+    }
+
+    private func cancelGeneration() {
+        generationTask?.cancel()
+        generationTask = nil
+        if isGenerating {
+            isGenerating = false
+            generationStatusNote = "Generation canceled."
+            debugLogStore.log(.warning, category: "generation", message: "User canceled generation.")
         }
     }
 
@@ -608,10 +658,11 @@ struct DiscoveryView: View {
         query: String,
         batchIndex: Int,
         trigger: GenerationTrigger,
-        contextWorkouts: [WorkoutDefinition]
+        contextWorkouts: [WorkoutDefinition],
+        onCandidate: @escaping @Sendable (GeneratedCandidate) -> Void
     ) async -> GenerationBatchResult {
         let desiredCount = 5
-        let liveTargetCount = 1
+        let liveTargetCount = desiredCount
         if let apiKey = preferencesStore.llmAPIKey(),
            preferencesStore.preferences.llm.enabled {
             let liveLogger: @Sendable (String) -> Void = { message in
@@ -633,7 +684,8 @@ struct DiscoveryView: View {
                     modelID: preferencesStore.preferences.llm.modelID,
                     apiKey: apiKey
                     ,
-                    log: liveLogger
+                    log: liveLogger,
+                    onCandidate: onCandidate
                 )
                 if !liveCandidates.isEmpty {
                     if liveCandidates.count >= desiredCount {
@@ -651,6 +703,9 @@ struct DiscoveryView: View {
                         contextWorkouts: contextWorkouts
                     )
                     let needed = max(0, desiredCount - liveCandidates.count)
+                    for candidate in fallback.prefix(needed) {
+                        onCandidate(candidate)
+                    }
                     return GenerationBatchResult(
                         candidates: liveCandidates + Array(fallback.prefix(needed)),
                         note: "Mixed live function-calling + fallback generation (\(liveCandidates.count)/\(desiredCount) live; debug mode).",
@@ -665,25 +720,31 @@ struct DiscoveryView: View {
                     message: "Live function-calling failed for query '\(query)': \(reason)"
                 )
                 return GenerationBatchResult(
-                    candidates: deterministicPipelineCandidates(
-                        query: query,
-                        batchIndex: batchIndex,
-                        trigger: trigger,
-                        contextWorkouts: contextWorkouts
-                    ),
+                    candidates: {
+                        let fallback = deterministicPipelineCandidates(
+                            query: query,
+                            batchIndex: batchIndex,
+                            trigger: trigger,
+                            contextWorkouts: contextWorkouts
+                        )
+                        fallback.forEach(onCandidate)
+                        return fallback
+                    }(),
                     note: "Used deterministic fallback generation. Live generation failed: \(reason)",
                     usedFallback: true
                 )
             }
         }
 
+        let fallback = deterministicPipelineCandidates(
+            query: query,
+            batchIndex: batchIndex,
+            trigger: trigger,
+            contextWorkouts: contextWorkouts
+        )
+        fallback.forEach(onCandidate)
         return GenerationBatchResult(
-            candidates: deterministicPipelineCandidates(
-                query: query,
-                batchIndex: batchIndex,
-                trigger: trigger,
-                contextWorkouts: contextWorkouts
-            ),
+            candidates: fallback,
             note: "Used deterministic fallback generation.",
             usedFallback: true
         )
@@ -697,7 +758,8 @@ struct DiscoveryView: View {
         modelID: String,
         apiKey: String,
         timeoutSeconds: Double = 120,
-        log: @escaping @Sendable (String) -> Void
+        log: @escaping @Sendable (String) -> Void,
+        onCandidate: @escaping @Sendable (GeneratedCandidate) -> Void
     ) async throws -> [GeneratedCandidate] {
         try await withThrowingTaskGroup(of: [GeneratedCandidate].self) { group in
             group.addTask {
@@ -708,7 +770,8 @@ struct DiscoveryView: View {
                     count: count,
                     modelID: modelID,
                     apiKey: apiKey,
-                    log: log
+                    log: log,
+                    onCandidate: onCandidate
                 )
             }
             group.addTask {
@@ -1253,23 +1316,40 @@ struct TemplateVariantManagerView: View {
 
 struct WorkoutDetailView: View {
     @EnvironmentObject private var sessionState: SessionStateStore
+    @EnvironmentObject private var preferencesStore: UserPreferencesStore
+    @EnvironmentObject private var debugLogStore: DebugLogStore
     @EnvironmentObject private var templateStore: WorkoutTemplateStore
     @EnvironmentObject private var variantStore: WorkoutVariantStore
     let workout: WorkoutDefinition
     let recommendation: RankedWorkout?
     @Binding var selectedTab: AppTab
+    @State private var currentWorkout: WorkoutDefinition
+    @State private var promptText = ""
+    @State private var refineTask: Task<Void, Never>?
+    @State private var isRefining = false
+    @State private var statusText: String?
+    @State private var showDebugLogs = false
     @State private var managementMessage: String?
 
+    private let functionCallingService = OpenAIFunctionCallingService()
+
+    init(workout: WorkoutDefinition, recommendation: RankedWorkout?, selectedTab: Binding<AppTab>) {
+        self.workout = workout
+        self.recommendation = recommendation
+        _selectedTab = selectedTab
+        _currentWorkout = State(initialValue: workout)
+    }
+
     private var sectionCount: Int {
-        workout.content.parsedSections?.count ?? 0
+        currentWorkout.content.parsedSections?.count ?? 0
     }
 
     private var sectionTitles: [String] {
-        workout.content.parsedSections?.prefix(3).map { $0.title } ?? []
+        currentWorkout.content.parsedSections?.prefix(3).map { $0.title } ?? []
     }
 
     private var overviewMarkdown: String {
-        WorkoutMarkdownParser().strippedMarkdown(from: workout.content.sourceMarkdown)
+        WorkoutMarkdownParser().strippedMarkdown(from: currentWorkout.content.sourceMarkdown)
     }
 
     private enum OverviewBlock: Identifiable {
@@ -1337,7 +1417,7 @@ struct WorkoutDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(workout.title)
+                    Text(currentWorkout.title)
                         .font(.title2)
                         .fontWeight(.semibold)
 
@@ -1347,7 +1427,7 @@ struct WorkoutDetailView: View {
 
                 HStack(spacing: 8) {
                     MockChip(title: "\(sectionCount) sections")
-                    MockChip(title: sourceLabel(for: workout.source))
+                    MockChip(title: sourceLabel(for: currentWorkout.source))
                 }
 
                 HighlightCard(
@@ -1356,12 +1436,66 @@ struct WorkoutDetailView: View {
                     detail: recommendation?.reasons.prefix(2).map(\.text).joined(separator: " • ") ?? "Sections parsed from the original Markdown"
                 )
 
-                if workout.source == .generated, let summary = workout.summary, !summary.isEmpty {
+                if currentWorkout.source == .generated, let summary = currentWorkout.summary, !summary.isEmpty {
                     HighlightCard(
                         title: "Generation Rationale",
                         subtitle: summary,
                         detail: "Includes retrieval-informed context and validation before display."
                     )
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Adjust with AI")
+                        .font(.headline)
+                    TextField("Refine prompt (e.g., make it shorter, less shoulder load)", text: $promptText)
+                        .textFieldStyle(.roundedBorder)
+
+                    HStack(spacing: 10) {
+                        Button(isRefining ? "Refining..." : "Refine Workout") {
+                            submitRefinement()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isRefining || promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                        Button("Logs") {
+                            showDebugLogs = true
+                        }
+                        .buttonStyle(.bordered)
+
+                        if isRefining {
+                            Button {
+                                cancelRefinement(userInitiated: true)
+                            } label: {
+                                Image(systemName: "stop.fill")
+                                    .font(.caption)
+                                    .padding(8)
+                                    .background(Color.red.opacity(0.15))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Stop refinement")
+                        }
+
+                        Spacer()
+                    }
+
+                    if isRefining {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.small)
+                            AnimatedStatusText(baseText: statusText ?? "Thinking")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(10)
+                    } else if let statusText, !statusText.isEmpty {
+                        Text(statusText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -1401,7 +1535,8 @@ struct WorkoutDetailView: View {
                 }
 
                 Button {
-                    sessionState.startSession(workout: workout)
+                    cancelRefinement(userInitiated: false)
+                    sessionState.startSession(workout: currentWorkout)
                     selectedTab = .session
                 } label: {
                     Text("Start Session")
@@ -1415,7 +1550,7 @@ struct WorkoutDetailView: View {
                 HStack(spacing: 10) {
                     Button("Save as Template") {
                         do {
-                            _ = try templateStore.createTemplateFromWorkout(workout)
+                            _ = try templateStore.createTemplateFromWorkout(currentWorkout)
                             managementMessage = "Template saved."
                         } catch {
                             managementMessage = "Unable to save template."
@@ -1425,7 +1560,7 @@ struct WorkoutDetailView: View {
 
                     Button("Create Variant") {
                         do {
-                            _ = try variantStore.createVariant(from: workout)
+                            _ = try variantStore.createVariant(from: currentWorkout)
                             managementMessage = "Variant created."
                         } catch {
                             managementMessage = "Unable to create variant."
@@ -1443,6 +1578,13 @@ struct WorkoutDetailView: View {
             .padding()
         }
         .navigationTitle("Workout")
+        .sheet(isPresented: $showDebugLogs) {
+            DebugLogsView()
+                .environmentObject(debugLogStore)
+        }
+        .onDisappear {
+            cancelRefinement(userInitiated: false)
+        }
     }
 
     private func sourceLabel(for source: WorkoutSource) -> String {
@@ -1457,6 +1599,76 @@ struct WorkoutDetailView: View {
             return "External"
         case .generated:
             return "Generated"
+        }
+    }
+
+    private func submitRefinement() {
+        let prompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        guard let apiKey = preferencesStore.llmAPIKey(),
+              preferencesStore.preferences.llm.enabled else {
+            statusText = "LLM unavailable. Check Settings."
+            return
+        }
+
+        cancelRefinement(userInitiated: false)
+        isRefining = true
+        statusText = "Refining workout"
+        let modelID = preferencesStore.preferences.llm.modelID
+        let baselineWorkout = currentWorkout
+        promptText = ""
+
+        refineTask = Task(priority: .userInitiated) {
+            do {
+                let refined = try await functionCallingService.refineWorkout(
+                    baseWorkout: baselineWorkout,
+                    prompt: prompt,
+                    contextWorkouts: [baselineWorkout],
+                    modelID: modelID,
+                    apiKey: apiKey
+                ) { message in
+                    Task { @MainActor in
+                        statusText = message
+                    }
+                }
+
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    currentWorkout = refined
+                    isRefining = false
+                    statusText = "Refinement complete."
+                    debugLogStore.log(.info, category: "refinement", message: "Refinement completed for workout '\(baselineWorkout.title)'.")
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    isRefining = false
+                    statusText = "Refinement failed: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+                    debugLogStore.log(.error, category: "refinement", message: statusText ?? "Refinement failed")
+                }
+            }
+        }
+    }
+
+    private func cancelRefinement(userInitiated: Bool) {
+        refineTask?.cancel()
+        refineTask = nil
+        isRefining = false
+        if userInitiated {
+            statusText = "Refinement canceled."
+            debugLogStore.log(.warning, category: "refinement", message: "User canceled refinement.")
+        }
+    }
+}
+
+struct AnimatedStatusText: View {
+    let baseText: String
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.45)) { context in
+            let step = Int(context.date.timeIntervalSinceReferenceDate * 10) % 4
+            let trimmed = baseText.trimmingCharacters(in: .whitespacesAndNewlines)
+            Text(trimmed + String(repeating: ".", count: step))
         }
     }
 }
@@ -2519,7 +2731,8 @@ actor OpenAIFunctionCallingService {
         count: Int,
         modelID: String,
         apiKey: String,
-        log: @escaping @Sendable (String) -> Void
+        log: @escaping @Sendable (String) -> Void,
+        onCandidate: (@Sendable (GeneratedCandidate) -> Void)? = nil
     ) async throws -> [GeneratedCandidate] {
         let maxRounds = 2
         let maxRepairAttempts = 1
@@ -2609,6 +2822,7 @@ actor OpenAIFunctionCallingService {
                     )
                     usedTitles.insert(built.title.lowercased())
                     candidates.append(built)
+                    onCandidate?(built)
                     log("candidate[\(index + 1)] buildCandidate success")
                     break
                 }
@@ -2644,6 +2858,76 @@ actor OpenAIFunctionCallingService {
             throw OpenAIFunctionCallingError.validationFailed("No valid candidates produced after generate/refine/validate loops.")
         }
         return candidates
+    }
+
+    func refineWorkout(
+        baseWorkout: WorkoutDefinition,
+        prompt: String,
+        contextWorkouts: [WorkoutDefinition],
+        modelID: String,
+        apiKey: String,
+        log: @escaping @Sendable (String) -> Void
+    ) async throws -> WorkoutDefinition {
+        let basePayload = workoutPayload(from: baseWorkout)
+        log("refine_workout start")
+        var refinedPayload = try await callTool(
+            name: "refine_workout",
+            description: "Refine a workout using user feedback.",
+            schema: refineSchema(),
+            payload: [
+                "query": prompt,
+                "candidate": basePayload,
+                "context": retrieveContext(query: prompt, contextWorkouts: contextWorkouts, candidate: basePayload)
+            ],
+            modelID: modelID,
+            apiKey: apiKey,
+            log: log,
+            context: "refine_workout"
+        )
+        log("refine_workout success")
+
+        let validation = try await callTool(
+            name: "validate_workout",
+            description: "Validate a refined workout candidate against hard constraints.",
+            schema: validateSchema(),
+            payload: [
+                "candidate": refinedPayload
+            ],
+            modelID: modelID,
+            apiKey: apiKey,
+            log: log,
+            context: "validate_refined_workout"
+        )
+        let isValid = (validation["isValid"] as? Bool) ?? false
+        if !isValid {
+            let issues = validation["issues"] as? [String] ?? []
+            if let repaired = try? await callTool(
+                name: "refine_workout",
+                description: "Repair refined workout using validation issues.",
+                schema: refineSchema(),
+                payload: [
+                    "query": prompt,
+                    "candidate": refinedPayload,
+                    "context": retrieveContext(query: prompt, contextWorkouts: contextWorkouts, candidate: refinedPayload),
+                    "repairIssues": issues
+                ],
+                modelID: modelID,
+                apiKey: apiKey,
+                log: log,
+                context: "repair_refined_workout"
+            ) {
+                refinedPayload = repaired
+            }
+        }
+
+        let refinedCandidate = try buildCandidate(
+            payload: refinedPayload,
+            query: prompt,
+            contextWorkouts: contextWorkouts,
+            generationRound: 1,
+            repairAttempts: 0
+        )
+        return refinedCandidate.asWorkoutDefinition()
     }
 
     private func buildCandidate(
@@ -2917,6 +3201,27 @@ actor OpenAIFunctionCallingService {
             return nil
         }
         return String(data: data, encoding: .utf8)
+    }
+
+    private func workoutPayload(from workout: WorkoutDefinition) -> [String: Any] {
+        [
+            "title": workout.title,
+            "summary": workout.summary ?? "",
+            "sections": (workout.content.parsedSections ?? []).map { section in
+                [
+                    "title": section.title,
+                    "detail": section.detail ?? "",
+                    "items": section.items.map { item in
+                        [
+                            "name": item.name,
+                            "prescription": item.prescription ?? "",
+                            "notes": item.notes ?? ""
+                        ]
+                    }
+                ]
+            },
+            "explanation": "Refinement of existing workout content."
+        ]
     }
 
     private func parseAPIErrorMessage(from data: Data) -> String? {
