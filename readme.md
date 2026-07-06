@@ -1,5 +1,7 @@
 # Workout App (iOS) — Requirements
 
+Last updated: 2026-07-06
+
 This file is the product requirements and target-state intent.
 For current implementation behavior, see `docs/current-state.md`.
 For current-vs-target gaps, see `docs/gap-analysis-current-vs-target.md`.
