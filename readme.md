@@ -38,6 +38,31 @@ This is an iOS workout application whose primary job is to help the user discove
 4) Log results (sets/reps/weight, notes, duration)
 5) Review history and progress; feed back into future discovery
 
+## Ticket Path (Current)
+Goal: ship a stable `release:v1` daily-driver, then move to quality-of-life `release:vNext`.
+
+### v1 path
+1) `#49` + `#32`: unify streaming/search/refinement UX and quality
+- Single in-context progress control with stop/cancel.
+- No premature empty-state messaging while search is still running.
+- Concrete movement-level generation/refinement output (not vague labels only).
+
+2) `#53`: move template/variant management into Settings
+- Keep Discovery focused on planning/generation.
+
+3) `#50`: HealthKit export MVP
+- Ensure completed workouts are exported for consolidated history.
+
+4) `#43`: user-editable LLM instructions
+- Give controlled customization after baseline UX is stable.
+
+5) `#51`: release readiness checklist
+- Final validation, acceptance pass, and TestFlight/App Store prep.
+
+### vNext path
+1) `#55`: starred workouts + starred filter
+2) `#54`: scheduled workout backlog (weekly planning)
+
 ## Requirements
 
 ## Tooling (Local)

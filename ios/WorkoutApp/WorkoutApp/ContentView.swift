@@ -79,6 +79,7 @@ struct DiscoveryView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var searchIndexBuildTask: Task<Void, Never>?
     @State private var isLoadingWorkouts = false
+    @State private var isSearching = false
     @State private var selectedEquipment: Set<String> = []
     @State private var selectedLocations: Set<String> = []
     @State private var selectedDurations: Set<DurationFilter> = []
@@ -144,6 +145,16 @@ struct DiscoveryView: View {
         return !submittedSearchQuery.isEmpty && currentQuery == submittedSearchQuery
     }
 
+    private var activeSearchStatusText: String? {
+        if isGenerating {
+            return generationStatusNote ?? "Generating workout ideas"
+        }
+        if isSearching {
+            return "Searching workouts"
+        }
+        return nil
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -159,49 +170,32 @@ struct DiscoveryView: View {
                 SearchField(
                     text: $searchQuery,
                     placeholder: "Plan your workout",
+                    isWorking: activeSearchStatusText != nil,
+                    statusText: activeSearchStatusText,
+                    onCancel: isGenerating ? { cancelGeneration() } : nil,
+                    onPrimaryAction: submitPlanQuery,
                     onSubmit: submitPlanQuery
                 )
 
-                HStack {
-                    Button("Manage Templates & Variants") {
+                HStack(spacing: 12) {
+                    Button {
                         showTemplateManager = true
+                    } label: {
+                        Image(systemName: "square.stack.3d.up")
+                            .font(.headline)
                     }
                     .buttonStyle(.bordered)
-                    Button("Logs") {
-                        showDebugLogs = true
-                    }
-                    .buttonStyle(.bordered)
-                    Spacer()
-                    if isGenerating {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
+                    .accessibilityLabel("Manage templates and variants")
 
-                if isGenerating {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                            .controlSize(.small)
-                        AnimatedStatusText(baseText: generationStatusNote ?? "Generating")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button {
-                            cancelGeneration()
-                        } label: {
-                            Image(systemName: "stop.fill")
-                                .font(.caption)
-                                .padding(8)
-                                .background(Color.red.opacity(0.15))
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Stop generation")
+                    Button {
+                        showDebugLogs = true
+                    } label: {
+                        Image(systemName: "scroll")
+                            .font(.headline)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(12)
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Open logs")
+                    Spacer()
                 }
 
                 if isLoadingWorkouts, !workouts.isEmpty {
@@ -231,8 +225,17 @@ struct DiscoveryView: View {
                             .font(.headline)
 
                         if filteredSearchResults.isEmpty {
-                            Text(hasActiveFilters ? "No workouts match that search and filters." : "No workouts match that search.")
-                                .foregroundStyle(.secondary)
+                            if isSearching {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                    AnimatedStatusText(baseText: "Searching workouts")
+                                        .foregroundStyle(.secondary)
+                                }
+                            } else {
+                                Text(hasActiveFilters ? "No workouts match that search and filters." : "No workouts match that search.")
+                                    .foregroundStyle(.secondary)
+                            }
                         } else {
                             ForEach(filteredSearchResults) { result in
                                 NavigationLink {
@@ -272,15 +275,18 @@ struct DiscoveryView: View {
                                 Button {
                                     loadMoreGenerated()
                                 } label: {
-                                    Text(isGenerating ? "Generating..." : "Generate More Ideas")
-                                        .frame(maxWidth: .infinity)
-                                        .padding()
-                                        .background(Color.accentColor.opacity(0.15))
-                                        .cornerRadius(12)
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "sparkles")
+                                        Text("More")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.accentColor.opacity(0.15))
+                                    .cornerRadius(12)
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(isGenerating)
-                                if let generationStatusNote, !generationStatusNote.isEmpty {
+                                if !isGenerating, let generationStatusNote, !generationStatusNote.isEmpty {
                                     Text(generationStatusNote)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -423,6 +429,7 @@ struct DiscoveryView: View {
         .onChange(of: searchQuery) { _, newValue in
             if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 searchTask?.cancel()
+                isSearching = false
                 submittedSearchQuery = ""
                 submittedGenerationQuery = nil
                 searchResults = []
@@ -493,12 +500,16 @@ struct DiscoveryView: View {
             let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, let index else {
                 await MainActor.run {
+                    isSearching = false
                     searchResults = []
                     generatedCandidates = []
                     generatedBatchCount = 0
                     generationStatusNote = nil
                 }
                 return
+            }
+            await MainActor.run {
+                isSearching = true
             }
             let results = await Task.detached(priority: .userInitiated) {
                 index.search(query: trimmed, limit: 25)
@@ -510,6 +521,7 @@ struct DiscoveryView: View {
                 guard revision == searchRevision else {
                     return
                 }
+                isSearching = false
                 searchResults = results
             }
         }
@@ -559,6 +571,7 @@ struct DiscoveryView: View {
         let trimmedQuery = searchQueryText(from: searchQuery).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
             cancelGeneration()
+            isSearching = false
             submittedSearchQuery = ""
             submittedGenerationQuery = nil
             searchResults = []
@@ -1447,55 +1460,79 @@ struct WorkoutDetailView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Adjust with AI")
                         .font(.headline)
-                    TextField("Refine prompt (e.g., make it shorter, less shoulder load)", text: $promptText)
-                        .textFieldStyle(.roundedBorder)
-
-                    HStack(spacing: 10) {
-                        Button(isRefining ? "Refining..." : "Refine Workout") {
-                            submitRefinement()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(isRefining || promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                        Button("Logs") {
-                            showDebugLogs = true
-                        }
-                        .buttonStyle(.bordered)
-
-                        if isRefining {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "wand.and.stars")
+                                .foregroundStyle(.secondary)
+                            TextField("Ask for follow-up changes", text: $promptText)
+                                .submitLabel(.send)
+                                .onSubmit {
+                                    submitRefinement()
+                                }
+                            if !promptText.isEmpty {
+                                Button {
+                                    promptText = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
                             Button {
-                                cancelRefinement(userInitiated: true)
+                                submitRefinement()
                             } label: {
-                                Image(systemName: "stop.fill")
-                                    .font(.caption)
-                                    .padding(8)
-                                    .background(Color.red.opacity(0.15))
-                                    .clipShape(Circle())
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRefining ? Color.secondary : Color.accentColor)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Stop refinement")
+                            .disabled(isRefining || promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .accessibilityLabel("Refine workout")
                         }
 
-                        Spacer()
-                    }
+                        HStack(spacing: 12) {
+                            Button {
+                                showDebugLogs = true
+                            } label: {
+                                Image(systemName: "scroll")
+                                    .font(.headline)
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel("Open logs")
 
-                    if isRefining {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                                .controlSize(.small)
-                            AnimatedStatusText(baseText: statusText ?? "Thinking")
+                            if isRefining {
+                                Button {
+                                    cancelRefinement(userInitiated: true)
+                                } label: {
+                                    Image(systemName: "stop.fill")
+                                        .font(.caption)
+                                        .padding(8)
+                                        .background(Color.red.opacity(0.15))
+                                        .clipShape(Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Stop refinement")
+                            }
+                            Spacer()
+                        }
+
+                        if isRefining {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                AnimatedStatusText(baseText: statusText ?? "Thinking")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if let statusText, !statusText.isEmpty {
+                            Text(statusText)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(Color(.secondarySystemBackground))
-                        .cornerRadius(10)
-                    } else if let statusText, !statusText.isEmpty {
-                        Text(statusText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
+                    .padding(12)
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(12)
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -1603,6 +1640,9 @@ struct WorkoutDetailView: View {
     }
 
     private func submitRefinement() {
+        if isRefining {
+            return
+        }
         let prompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
         guard let apiKey = preferencesStore.llmAPIKey(),
@@ -3300,36 +3340,74 @@ actor OpenAIFunctionCallingService {
 struct SearchField: View {
     @Binding var text: String
     let placeholder: String
+    var isWorking: Bool = false
+    var statusText: String? = nil
+    var onCancel: (() -> Void)? = nil
+    var onPrimaryAction: (() -> Void)? = nil
     var onSubmit: (() -> Void)? = nil
     @FocusState private var isFieldFocused: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField(placeholder, text: $text)
-                .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
-                .focused($isFieldFocused)
-                .submitLabel(.go)
-                .onSubmit {
-                    onSubmit?()
-                    Task { @MainActor in
-                        isFieldFocused = true
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(placeholder, text: $text)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .focused($isFieldFocused)
+                    .submitLabel(.go)
+                    .onSubmit {
+                        onSubmit?()
+                        Task { @MainActor in
+                            isFieldFocused = true
+                        }
+                    }
+                if !text.isEmpty {
+                    Button {
+                        text = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                if let onPrimaryAction {
+                    Button(action: onPrimaryAction) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.secondary : Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("Submit search")
+                }
+            }
+
+            if isWorking {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.small)
+                    AnimatedStatusText(baseText: statusText ?? "Working")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if let onCancel {
+                        Button(action: onCancel) {
+                            Image(systemName: "stop.fill")
+                                .font(.caption)
+                                .padding(8)
+                                .background(Color.red.opacity(0.15))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Stop")
                     }
                 }
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
+                .padding(.top, 2)
             }
-            Spacer()
         }
-        .padding()
+        .padding(12)
         .background(Color(.secondarySystemBackground))
         .cornerRadius(12)
     }
