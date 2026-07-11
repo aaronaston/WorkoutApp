@@ -65,6 +65,24 @@ final class UserPreferencesStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testStarredWorkoutsPersistAcrossStoreInit() throws {
+        let directoryURL = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let fileURL = directoryURL.appendingPathComponent("user_preferences.json")
+
+        let store = UserPreferencesStore(fileURL: fileURL)
+        store.setWorkout("workout-1", isStarred: true)
+        store.toggleStarredWorkout("workout-2")
+        store.toggleStarredWorkout("workout-1")
+
+        let reloadedStore = UserPreferencesStore(fileURL: fileURL)
+
+        XCTAssertFalse(reloadedStore.isWorkoutStarred("workout-1"))
+        XCTAssertTrue(reloadedStore.isWorkoutStarred("workout-2"))
+        XCTAssertEqual(reloadedStore.preferences.starredWorkoutIDs, Set(["workout-2"]))
+    }
+
+    @MainActor
     func testTogglesPersistAcrossStoreInit() throws {
         let directoryURL = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: directoryURL) }
@@ -141,6 +159,7 @@ final class UserPreferencesStoreTests: XCTestCase {
         XCTAssertFalse(store.preferences.healthKitSyncEnabled)
         XCTAssertEqual(store.preferences.discovery.targetDuration, .medium)
         XCTAssertEqual(store.preferences.llm, LLMPreferences())
+        XCTAssertTrue(store.preferences.starredWorkoutIDs.isEmpty)
     }
 
     @MainActor

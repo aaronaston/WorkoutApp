@@ -83,6 +83,7 @@ struct DiscoveryView: View {
     @State private var selectedEquipment: Set<String> = []
     @State private var selectedLocations: Set<String> = []
     @State private var selectedDurations: Set<DurationFilter> = []
+    @State private var starredOnly = false
     @State private var generatedCandidates: [GeneratedCandidate] = []
     @State private var generatedBatchCount = 0
     @State private var isGenerating = false
@@ -125,7 +126,7 @@ struct DiscoveryView: View {
     }
 
     private var hasActiveFilters: Bool {
-        !selectedEquipment.isEmpty || !selectedLocations.isEmpty || !selectedDurations.isEmpty
+        !selectedEquipment.isEmpty || !selectedLocations.isEmpty || !selectedDurations.isEmpty || starredOnly
     }
 
     private var filteredSearchResults: [WorkoutSearchResult] {
@@ -355,10 +356,24 @@ struct DiscoveryView: View {
                                 selectedEquipment.removeAll()
                                 selectedLocations.removeAll()
                                 selectedDurations.removeAll()
+                                starredOnly = false
                             }
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .buttonStyle(.plain)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Saved")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        FilterChip(
+                            title: "Starred",
+                            isSelected: starredOnly
+                        ) {
+                            starredOnly.toggle()
                         }
                     }
 
@@ -1007,6 +1022,10 @@ struct DiscoveryView: View {
     }
 
     private func workoutMatchesFilters(_ workout: WorkoutDefinition) -> Bool {
+        if starredOnly, !preferencesStore.isWorkoutStarred(workout.id) {
+            return false
+        }
+
         if !selectedEquipment.isEmpty {
             let equipment = workoutEquipmentTags(for: workout)
             if equipment.intersection(selectedEquipment).isEmpty {
@@ -1429,18 +1448,39 @@ struct WorkoutDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(currentWorkout.title)
-                        .font(.title2)
-                        .fontWeight(.semibold)
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(currentWorkout.title)
+                            .font(.title2)
+                            .fontWeight(.semibold)
 
-                    Text(sectionTitles.isEmpty ? "Knowledge base workout" : sectionTitles.joined(separator: " / "))
-                        .foregroundStyle(.secondary)
+                        Text(sectionTitles.isEmpty ? "Knowledge base workout" : sectionTitles.joined(separator: " / "))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        preferencesStore.toggleStarredWorkout(currentWorkout.id)
+                    } label: {
+                        Label(
+                            preferencesStore.isWorkoutStarred(currentWorkout.id) ? "Unstar workout" : "Star workout",
+                            systemImage: preferencesStore.isWorkoutStarred(currentWorkout.id) ? "star.fill" : "star"
+                        )
+                        .labelStyle(.iconOnly)
+                        .font(.title2)
+                        .foregroundStyle(preferencesStore.isWorkoutStarred(currentWorkout.id) ? Color.yellow : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(preferencesStore.isWorkoutStarred(currentWorkout.id) ? "Unstar workout" : "Star workout")
                 }
 
                 HStack(spacing: 8) {
                     MockChip(title: "\(sectionCount) sections")
                     MockChip(title: sourceLabel(for: currentWorkout.source))
+                    if preferencesStore.isWorkoutStarred(currentWorkout.id) {
+                        MockChip(title: "Starred")
+                    }
                 }
 
                 HighlightCard(
@@ -1924,6 +1964,7 @@ private func workoutWithParsedSectionsFallback(_ workout: WorkoutDefinition) -> 
 struct HistoryView: View {
     @EnvironmentObject private var sessionState: SessionStateStore
     @EnvironmentObject private var sessionStore: WorkoutSessionStore
+    @EnvironmentObject private var preferencesStore: UserPreferencesStore
     @EnvironmentObject private var artifactStore: WorkoutArtifactStore
     @Binding var selectedTab: AppTab
     @State private var workoutLookup: [WorkoutID: WorkoutDefinition] = [:]
@@ -1933,6 +1974,7 @@ struct HistoryView: View {
     @State private var searchIndex: WorkoutSearchIndex?
     @State private var searchTask: Task<Void, Never>?
     @State private var adjustingWorkout: WorkoutDefinition?
+    @State private var starredOnly = false
 
     init(selectedTab: Binding<AppTab>) {
         _selectedTab = selectedTab
@@ -1947,8 +1989,11 @@ struct HistoryView: View {
     }
 
     private var sessions: [WorkoutSession] {
+        let sourceSessions = starredOnly
+            ? allSessions.filter { preferencesStore.isWorkoutStarred($0.workout.id) }
+            : allSessions
         let filtered = HistorySessionDiscovery.filterSessions(
-            allSessions,
+            sourceSessions,
             query: searchQuery,
             resolvedWorkouts: workoutLookup,
             semanticMatches: semanticMatchedWorkoutIDs
@@ -2063,6 +2108,15 @@ struct HistoryView: View {
         .navigationTitle("History")
         .searchable(text: $searchQuery, prompt: "Search prior workouts or notes")
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    starredOnly.toggle()
+                } label: {
+                    Label("Starred", systemImage: starredOnly ? "star.fill" : "star")
+                }
+                .accessibilityLabel(starredOnly ? "Show all history" : "Show starred history")
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Menu("Sort") {
                     ForEach(HistorySessionSortOption.allCases) { option in
@@ -3414,6 +3468,7 @@ struct SearchField: View {
 }
 
 struct WorkoutRow: View {
+    @EnvironmentObject private var preferencesStore: UserPreferencesStore
     let workout: WorkoutDefinition
     let recommendation: RankedWorkout?
     var isNew: Bool = false
@@ -3435,9 +3490,17 @@ struct WorkoutRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(workout.title)
-                .fontWeight(.semibold)
-                .foregroundStyle(.primary)
+            HStack(spacing: 6) {
+                Text(workout.title)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+
+                if preferencesStore.isWorkoutStarred(workout.id) {
+                    Image(systemName: "star.fill")
+                        .foregroundStyle(.yellow)
+                        .accessibilityLabel("Starred workout")
+                }
+            }
 
             Text(sectionSummary)
                 .foregroundStyle(.secondary)
@@ -3454,6 +3517,9 @@ struct WorkoutRow: View {
                 MockChip(title: sourceLabel(for: workout.source))
                 if isNew || workout.source == .generated {
                     MockChip(title: "New")
+                }
+                if preferencesStore.isWorkoutStarred(workout.id) {
+                    MockChip(title: "Starred")
                 }
                 if let recommendation {
                     MockChip(title: "Score \(String(format: "%.2f", recommendation.score))")

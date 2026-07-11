@@ -38,7 +38,7 @@
 		100000000000000000000112 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		100000000000000000000113 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		100000000000000000000114 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		100000000000000000000115 /* WorkoutApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = WorkoutApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000115 /* Twisted Workouts.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = "Twisted Workouts.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000150 /* CoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreModels.swift; sourceTree = "<group>"; };
 		100000000000000000000180 /* KnowledgeBaseLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeBaseLoader.swift; sourceTree = "<group>"; };
 		100000000000000000000190 /* ../../../resources/workouts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ../../../resources/workouts; sourceTree = "<group>"; };
@@ -84,7 +84,7 @@
 		100000000000000000000103 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				100000000000000000000115 /* WorkoutApp.app */,
+				100000000000000000000115 /* Twisted Workouts.app */,
 				100000000000000000000231 /* WorkoutAppTests.xctest */,
 			);
 			name = Products;
@@ -153,7 +153,7 @@
 				100000000000000000000211 /* Markdown */,
 			);
 			productName = WorkoutApp;
-			productReference = 100000000000000000000115 /* WorkoutApp.app */;
+			productReference = 100000000000000000000115 /* Twisted Workouts.app */;
 			productType = "com.apple.product-type.application";
 		};
 		100000000000000000000239 /* WorkoutAppTests */ = {
@@ -383,7 +383,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 0.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "ca.twisted-pair.WorkoutApp";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Twisted Workouts";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -404,7 +404,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 0.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "ca.twisted-pair.WorkoutApp";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Twisted Workouts";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

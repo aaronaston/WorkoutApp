@@ -6,12 +6,14 @@ struct UserPreferences: Codable, Hashable {
     var healthKitSyncEnabled: Bool
     var discovery: DiscoveryPreferences
     var llm: LLMPreferences
+    var starredWorkoutIDs: Set<WorkoutID>
 
     static let `default` = UserPreferences(
         calendarSyncEnabled: false,
         healthKitSyncEnabled: true,
         discovery: DiscoveryPreferences(),
-        llm: LLMPreferences()
+        llm: LLMPreferences(),
+        starredWorkoutIDs: []
     )
 
     private enum CodingKeys: String, CodingKey {
@@ -19,18 +21,21 @@ struct UserPreferences: Codable, Hashable {
         case healthKitSyncEnabled
         case discovery
         case llm
+        case starredWorkoutIDs
     }
 
     init(
         calendarSyncEnabled: Bool,
         healthKitSyncEnabled: Bool,
         discovery: DiscoveryPreferences,
-        llm: LLMPreferences = LLMPreferences()
+        llm: LLMPreferences = LLMPreferences(),
+        starredWorkoutIDs: Set<WorkoutID> = []
     ) {
         self.calendarSyncEnabled = calendarSyncEnabled
         self.healthKitSyncEnabled = healthKitSyncEnabled
         self.discovery = discovery
         self.llm = llm
+        self.starredWorkoutIDs = starredWorkoutIDs
     }
 
     init(from decoder: Decoder) throws {
@@ -39,6 +44,13 @@ struct UserPreferences: Codable, Hashable {
         healthKitSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .healthKitSyncEnabled) ?? true
         discovery = try container.decodeIfPresent(DiscoveryPreferences.self, forKey: .discovery) ?? DiscoveryPreferences()
         llm = try container.decodeIfPresent(LLMPreferences.self, forKey: .llm) ?? LLMPreferences()
+        starredWorkoutIDs = try container.decodeIfPresent(Set<WorkoutID>.self, forKey: .starredWorkoutIDs) ?? []
+    }
+}
+
+extension UserPreferences {
+    func isWorkoutStarred(_ workoutID: WorkoutID) -> Bool {
+        starredWorkoutIDs.contains(workoutID)
     }
 }
 
@@ -384,6 +396,24 @@ final class UserPreferencesStore: ObservableObject {
 
     func llmAPIKey() -> String? {
         Self.loadLLMAPIKey(from: apiKeyStore, service: apiKeyService, account: apiKeyAccount)
+    }
+
+    func isWorkoutStarred(_ workoutID: WorkoutID) -> Bool {
+        preferences.isWorkoutStarred(workoutID)
+    }
+
+    func setWorkout(_ workoutID: WorkoutID, isStarred: Bool) {
+        var updated = preferences
+        if isStarred {
+            updated.starredWorkoutIDs.insert(workoutID)
+        } else {
+            updated.starredWorkoutIDs.remove(workoutID)
+        }
+        preferences = updated
+    }
+
+    func toggleStarredWorkout(_ workoutID: WorkoutID) {
+        setWorkout(workoutID, isStarred: !isWorkoutStarred(workoutID))
     }
 
     private func savePreferences() {
