@@ -10,6 +10,17 @@ enum AppTab: Hashable {
     case settings
 }
 
+private struct KeyboardDoneToolbar: ToolbarContent {
+    let dismissKeyboard: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("Done", action: dismissKeyboard)
+        }
+    }
+}
+
 struct ContentView: View {
     @State private var selectedTab: AppTab = .discover
 
@@ -437,6 +448,7 @@ struct DiscoveryView: View {
             }
             .padding()
         }
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Plan")
         .task {
             loadWorkoutsIfNeeded()
@@ -1157,13 +1169,20 @@ struct TemplateVariantManagerView: View {
     @State private var renameVariantID: WorkoutID?
     @State private var renameValue = ""
     @State private var statusMessage: String?
+    @FocusState private var isNewTemplateTitleFocused: Bool
 
     var body: some View {
         NavigationStack {
             List {
                 Section("Create") {
                     TextField("New template title", text: $newTemplateTitle)
+                        .focused($isNewTemplateTitleFocused)
+                        .submitLabel(.done)
+                        .onSubmit {
+                            isNewTemplateTitleFocused = false
+                        }
                     Button("Create Template From Scratch") {
+                        isNewTemplateTitleFocused = false
                         let trimmed = newTemplateTitle.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else {
                             return
@@ -1285,12 +1304,16 @@ struct TemplateVariantManagerView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Templates & Variants")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
+                }
+                KeyboardDoneToolbar {
+                    isNewTemplateTitleFocused = false
                 }
             }
             .alert("Rename Template", isPresented: Binding(
@@ -1362,6 +1385,7 @@ struct WorkoutDetailView: View {
     @State private var statusText: String?
     @State private var showDebugLogs = false
     @State private var managementMessage: String?
+    @FocusState private var isPromptFocused: Bool
 
     private let functionCallingService = OpenAIFunctionCallingService()
 
@@ -1505,8 +1529,10 @@ struct WorkoutDetailView: View {
                             Image(systemName: "wand.and.stars")
                                 .foregroundStyle(.secondary)
                             TextField("Ask for follow-up changes", text: $promptText)
+                                .focused($isPromptFocused)
                                 .submitLabel(.send)
                                 .onSubmit {
+                                    isPromptFocused = false
                                     submitRefinement()
                                 }
                             if !promptText.isEmpty {
@@ -1519,6 +1545,7 @@ struct WorkoutDetailView: View {
                                 .buttonStyle(.plain)
                             }
                             Button {
+                                isPromptFocused = false
                                 submitRefinement()
                             } label: {
                                 Image(systemName: "arrow.up.circle.fill")
@@ -1654,7 +1681,13 @@ struct WorkoutDetailView: View {
             }
             .padding()
         }
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Workout")
+        .toolbar {
+            KeyboardDoneToolbar {
+                isPromptFocused = false
+            }
+        }
         .sheet(isPresented: $showDebugLogs) {
             DebugLogsView()
                 .environmentObject(debugLogStore)
@@ -2107,6 +2140,7 @@ struct HistoryView: View {
         }
         .navigationTitle("History")
         .searchable(text: $searchQuery, prompt: "Search prior workouts or notes")
+        .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -2463,6 +2497,12 @@ struct SettingsMockView: View {
     @StateObject private var networkMonitor = NetworkStatusMonitor()
     @State private var apiKeyInput = ""
     @State private var keySaveMessage: String?
+    @FocusState private var focusedField: Field?
+
+    private enum Field: Hashable {
+        case modelID
+        case apiKey
+    }
 
     private var llmRuntimeState: LLMRuntimeState {
         preferencesStore.llmRuntimeState(isNetworkAvailable: networkMonitor.isNetworkAvailable)
@@ -2516,6 +2556,11 @@ struct SettingsMockView: View {
                 TextField("Model ID", text: $preferencesStore.preferences.llm.modelID)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
+                    .focused($focusedField, equals: .modelID)
+                    .submitLabel(.next)
+                    .onSubmit {
+                        focusedField = .apiKey
+                    }
 
                 Picker("Prompt Mode", selection: $preferencesStore.preferences.llm.promptDetailLevel) {
                     ForEach(LLMPromptDetailLevel.allCases) { mode in
@@ -2526,9 +2571,15 @@ struct SettingsMockView: View {
                 SecureField("API Key", text: $apiKeyInput)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
+                    .focused($focusedField, equals: .apiKey)
+                    .submitLabel(.done)
+                    .onSubmit {
+                        focusedField = nil
+                    }
 
                 HStack {
                     Button("Save API Key") {
+                        focusedField = nil
                         if preferencesStore.saveLLMAPIKey(apiKeyInput) {
                             apiKeyInput = ""
                             keySaveMessage = "API key saved in Keychain."
@@ -2540,6 +2591,7 @@ struct SettingsMockView: View {
 
                     if preferencesStore.hasLLMAPIKey {
                         Button("Remove Key", role: .destructive) {
+                            focusedField = nil
                             preferencesStore.clearLLMAPIKey()
                             keySaveMessage = "API key removed."
                         }
@@ -2613,7 +2665,13 @@ struct SettingsMockView: View {
                 NavigationLink("Privacy Settings") {}
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Settings")
+        .toolbar {
+            KeyboardDoneToolbar {
+                focusedField = nil
+            }
+        }
     }
 }
 
@@ -3412,10 +3470,8 @@ struct SearchField: View {
                     .focused($isFieldFocused)
                     .submitLabel(.go)
                     .onSubmit {
+                        isFieldFocused = false
                         onSubmit?()
-                        Task { @MainActor in
-                            isFieldFocused = true
-                        }
                     }
                 if !text.isEmpty {
                     Button {
@@ -3427,7 +3483,10 @@ struct SearchField: View {
                     .buttonStyle(.plain)
                 }
                 if let onPrimaryAction {
-                    Button(action: onPrimaryAction) {
+                    Button {
+                        isFieldFocused = false
+                        onPrimaryAction()
+                    } label: {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.title3)
                             .foregroundStyle(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.secondary : Color.accentColor)
@@ -3464,6 +3523,11 @@ struct SearchField: View {
         .padding(12)
         .background(Color(.secondarySystemBackground))
         .cornerRadius(12)
+        .toolbar {
+            KeyboardDoneToolbar {
+                isFieldFocused = false
+            }
+        }
     }
 }
 
